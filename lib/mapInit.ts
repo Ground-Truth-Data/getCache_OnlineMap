@@ -15,11 +15,16 @@ import { addMarkersLayer } from "./mapLayerPolygon";
 import type { MapOptions } from "./mapTypes";
 import { applyNaturalOverrides, NATURAL_FOG } from "./mapStyleNatural";
 import { parseMapHash, setMapHash } from "./mapUtilsHash";
-import { safeEase } from "$harness/components/map/mapShared/safeEase";
-import { safeJumpTo } from "$harness/components/map/mapShared/safeMap";
+import { safeEase } from "./safeEase";
+import { safeJumpTo } from "./safeMap";
 import { installCoveringTilesGuard } from "./safeMarker";
-import { isCoord, toCoordFromArray } from "$harness/components/map/mapShared/coord";
-import { glyphStack } from "$harness/components/map/mapShared/glyphStack";
+
+// The pin is imported so the bytes travel with this child. map.loadImage takes
+// a URL, and an asset import yields exactly that — a build-time URL that
+// resolves under any host, unlike the "/mobileAssets/..." path it replaces.
+import hospitalPinUrl from "./assets/mobileAssets/hospitalPin.webp";
+import { isCoord, toCoordFromArray } from "./coord";
+import { glyphStack } from "./glyphStack";
 
 const defaultSatStyle = MAP_CONFIG.styles.defaultSat;
 
@@ -72,7 +77,7 @@ function addHospitalLayer(map: mapboxgl.Map): void {
 
     // Load custom hospital pin icon
     if (!map.hasImage("hospital-pin")) {
-        map.loadImage("/mobileAssets/hospitalPin.webp", (err, img) => {
+        map.loadImage(hospitalPinUrl, (err, img) => {
             if (err || !img) {
                 console.warn(
                     "[Hospitals] Failed to load hospitalPin.png:",
@@ -693,7 +698,7 @@ export function initializeMap(
     if (opts.enableHash) {
         map.on("moveend", () => {
             if (map.getZoom() < maxSpinZoom) return;
-            setMapHash(map);
+            setMapHash(map, opts.writeHash);
         });
     }
 

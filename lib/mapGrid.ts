@@ -19,7 +19,15 @@ import type {
     Map as MapboxMap,
 } from "mapbox-gl";
 import { encodePlusCode } from "./plusCode";
-import { safeGetBounds } from "$harness/components/map/mapShared/safeMap";
+import { safeGetBounds } from "./safeMap";
+
+// The popup below is built as an HTML STRING, so its <img> src cannot be a
+// Svelte binding — it has to be interpolated. Importing the asset keeps that
+// interpolation build-time: the bundler copies the bytes and hands back a URL
+// that resolves under any host, where "/mobileAssets/..." only resolved
+// against a server that happened to hold the file. The `*.webp` module type
+// comes from vite/client, pulled in ambiently via @sveltejs/kit.
+import qualityIconUrl from "./assets/mobileAssets/animations/quality_icon/12qualityIcon.webp";
 
 export type GridMode = "off" | "standard" | "fine";
 
@@ -935,7 +943,7 @@ export function attachGridLifecycle(
                     `<span class="grid-plot-number">${shortId}</span>` +
                     (onPlotFromDot
                         ? `<button type="button" class="grid-plot-btn" aria-label="Throw a Quality 704 plot on this grid point">` +
-                          `<img src="/mobileAssets/animations/quality_icon/12qualityIcon.webp" alt="" class="grid-plot-btn-icon" />` +
+                          `<img src="${qualityIconUrl}" alt="" class="grid-plot-btn-icon" />` +
                           `</button>`
                         : "") +
                     `</div>`,

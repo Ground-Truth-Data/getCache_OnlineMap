@@ -5,9 +5,9 @@ import type { Map as MapboxMap } from "mapbox-gl";
 import { area } from "@turf/turf";
 import { formatArea } from "./mapDrawUtils";
 
-import ShovelHandle from "$harness/components/ui/ShovelHandle.svelte";
-import { attachShovelGrabBand } from "$harness/components/ui/shovelGrabBand";
-import Icon from "$harness/components/map/mapShared/Icon.svelte";
+import ShovelHandle from "./shared/ShovelHandle.svelte";
+import { attachShovelGrabBand } from "./shared/shovelGrabBand";
+import Icon from "./ui/Icon.svelte";
 import {
     attachGridLifecycle,
     clearGrid,
@@ -32,6 +32,12 @@ import {
     wireBoundaryPinNavigation,
 } from "./mapDraw";
 import { syncAreaLabels } from "./areaLabels";
+
+// Imported, not requested from the host as "/mobileAssets/...". The bundler
+// resolves this at build time so the bytes travel with the child; a
+// leading-slash URL would only resolve against a server that happens to hold
+// that file.
+import tracksIconUrl from "./assets/mobileAssets/tracks_goldV3.webp";
 
 let {
     map = $bindable(null),
@@ -234,7 +240,7 @@ function closeDrawer() {
 // shovel's top edge all the way to the bottom of the screen (straight
 // through the tab bar), and only claims the finger once it has travelled
 // ~6px vertically, so taps on anything inside it still work.
-// Mechanics + reasoning: $harness/components/ui/shovelGrabBand.ts.
+// Mechanics + reasoning: $harness/getCache_OnlineMap/lib/shared/shovelGrabBand.ts.
 $effect(() => {
     return attachShovelGrabBand({
         handle: () => pullbarEl,
@@ -588,7 +594,7 @@ $effect(() => {
 
             <button class="util-row util-row-stub" disabled>
                 <span class="util-icon">
-                    <img src="/mobileAssets/tracks_goldV3.webp" alt="" class="util-icon-img" />
+                    <img src={tracksIconUrl} alt="" class="util-icon-img" />
                 </span>
                 <span class="util-text">
                     <span class="util-title">TRACKS</span>

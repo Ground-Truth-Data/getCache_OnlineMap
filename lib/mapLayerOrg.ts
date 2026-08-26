@@ -8,7 +8,7 @@ import type * as mapboxgl from "mapbox-gl";
 import { MAP_CONFIG } from "./MAP_CONFIG";
 import { addClusteredPins, type ClusteredPinsConfig } from "./mapMarker";
 import type { MapOptions } from "./mapTypes";
-import { safeFlyTo } from "$harness/components/map/mapShared/safeMap";
+import { safeFlyTo } from "./safeMap";
 
 /**
  * Helper function to add organization markers layer
@@ -18,11 +18,11 @@ export async function addOrgMarkersLayer(
     options: MapOptions = {},
 ): Promise<void> {
     try {
-        const apiBase = (options.apiBaseUrl ?? "").replace(/\/$/, "");
+        const organizationsUrl = options.organizationsUrl ?? "";
         // Fetch organizations from API. The map needs the GeoJSON
         // representation of the collection; the bare endpoint returns rows.
         const response = await fetch(
-            `${apiBase}/api/who/organizations?format=geojson`,
+            `${organizationsUrl}${organizationsUrl.includes("?") ? "&" : "?"}format=geojson`,
         );
         if (!response.ok) {
             console.error(

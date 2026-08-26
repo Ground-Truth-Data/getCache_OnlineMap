@@ -1,7 +1,14 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { page } from "$app/stores";
-import Icon from "$harness/components/map/mapShared/Icon.svelte";
+import Icon from "./ui/Icon.svelte";
+
+// Imported, never requested from the host as "/mobileAssets/...". An import is
+// resolved by the bundler at build time and the bytes travel with this child;
+// a leading-slash URL is resolved by the BROWSER against whatever server
+// answered, which is only ever one of the parents. The spaces in the filename
+// are fine in an import specifier — Vite emits the URL percent-encoded.
+import treeIconUrl from "./assets/mobileAssets/tree icon nick font_gold.webp";
 
 // Determine active state from current route
 $: isWhoMap = $page.url.pathname === "/who/map";
@@ -27,7 +34,7 @@ function goToWhat() {
 		aria-label="Where map"
 	>
 		<img
-			src="/mobileAssets/tree icon nick font_gold.webp"
+			src={treeIconUrl}
 			alt=""
 			width="28"
 			height="28"
@@ -46,7 +53,7 @@ function goToWhat() {
 	}
 
 	/* .map-nav-button sizing, bg, border, hover all inherit from global
-	   .mapboxgl-ctrl-group button rules in harness/src/lib/styles/map.css */
+	   .mapboxgl-ctrl-group button rules in getCache_OnlineMap/lib/map.css */
 	.map-nav-button {
 		cursor: pointer;
 	}

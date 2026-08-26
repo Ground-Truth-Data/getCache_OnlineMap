@@ -1,4 +1,7 @@
-const defaultMarkerUrl = "/mobileAssets/map-marker-osem-people.svg";
+// Imported, not a "/mobileAssets/..." path handed to the browser: the bundler
+// resolves it at build time so the marker travels with this child instead of
+// depending on whichever server answered.
+import defaultMarkerUrl from "./assets/mobileAssets/map-marker-osem-people.svg";
 
 const markerSize = 28;
 

@@ -1,0 +1,35 @@
+{
+  "name": "@ground-truth/getcache-onlinemap",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mapbox online map. A CHILD: takes its host as props and stands alone without one.",
+  "exports": {
+    "./lib/*": "./lib/*",
+    "./routes/*": "./routes/*",
+    "./deps.json": "./deps.json"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/filesystem": "^7.1.4",
+    "@capacitor/share": "^7.0.2",
+    "@tmcw/togeojson": "^7.1.2",
+    "@turf/turf": "^7.2.0",
+    "fflate": "^0.8.2",
+    "geojson": "^0.5.0",
+    "mapbox-gl": "^3.24.0",
+    "maplibre-gl": "^5.13.0",
+    "svelte-sonner": "^1.0.6"
+  },
+  "peerDependencies": {
+    "svelte": "^5.19.0"
+  },
+  "devDependencies": {
+    "vitest": "*"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "_no_build_on_purpose": "A child ships no vite.config.ts. It is not an app; it is a folder a parent builds. That is why the escape/case guard is a VITE PLUGIN in each parent (unskippable: no build, no deploy) and a VITEST TEST here (portable: runs in a bare clone with no app around it). Same rule, two shapes, because a plugin needs a build to hook into and a child has none.",
+  "_why_pinned": "Versions match what ReTreever runs, because that is the version the code was written and tested against. They were all \"*\" until 25 Aug 2026, which is not a constraint but a wish: the workspace install resolved pbf to 5.1.2, which dropped the default export, and the build died on `import Pbf from \"pbf\"`. Nested inside a parent the child silently borrowed the parent's version and the hole never showed. A child that is genuinely portable has to state what it needs."
+}
