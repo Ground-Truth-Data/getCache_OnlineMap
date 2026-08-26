@@ -22,7 +22,7 @@
  * precisely the person this is for.
  *
  * WHAT IS ALLOWED
- * The alias. `$harness/...` names no parent — it is a seam each parent fills
+ * The alias. `$parent/siblings/...` names no parent — it is a seam each parent fills
  * in for itself, which is the whole mechanism. And this child's OWN name may
  * contain "ReTreever" (ReTreever_who_what), so a bare match on the word is
  * wrong; what is banned is naming a parent as a LOCATION.
@@ -100,7 +100,7 @@ describe("the child names no parent", () => {
 				`side on one machine, it DOES resolve. It stops resolving the ` +
 				`moment this folder is published on its own, which is the point ` +
 				`of the folder.\n\n` +
-				`Reach a parent through the alias ($harness/...), or take what you ` +
+				`Reach a parent through the alias ($parent/siblings/...), or take what you ` +
 				`need as a prop. Never by name.`,
 		).toEqual([]);
 	});
@@ -108,7 +108,7 @@ describe("the child names no parent", () => {
 	it("the check bites — a parent-named path is detected", () => {
 		// Without this, a broken regex silently passes everything above.
 		const bad = 'import x from "../ReTreever/src/lib/foo";';
-		const ok = 'import x from "$harness/getCache_OnlineMap/lib/foo";';
+		const ok = 'import x from "$parent/siblings/getCache_OnlineMap/lib/foo";';
 		expect([...bad.matchAll(PARENT_AS_LOCATION)].length).toBeGreaterThan(0);
 		expect([...ok.matchAll(PARENT_AS_LOCATION)].length).toBe(0);
 	});

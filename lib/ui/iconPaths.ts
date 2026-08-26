@@ -7,7 +7,7 @@
 // written down ONCE here instead of pasted inline across components.
 //
 // Lives in the harness so BOTH the open map components AND the proprietary
-// ReTreever components share ONE catalog (ReTreever imports via $harness, the harness
+// ReTreever components share ONE catalog (ReTreever imports via $parent/siblings, the harness
 // via $lib — the legal ReTreever→harness / harness→harness directions).
 //
 // These are monochrome lucide-style line icons. Multi-colour brand marks

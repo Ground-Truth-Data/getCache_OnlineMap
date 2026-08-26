@@ -240,7 +240,7 @@ function closeDrawer() {
 // shovel's top edge all the way to the bottom of the screen (straight
 // through the tab bar), and only claims the finger once it has travelled
 // ~6px vertically, so taps on anything inside it still work.
-// Mechanics + reasoning: $harness/getCache_OnlineMap/lib/shared/shovelGrabBand.ts.
+// Mechanics + reasoning: $parent/siblings/getCache_OnlineMap/lib/shared/shovelGrabBand.ts.
 $effect(() => {
     return attachShovelGrabBand({
         handle: () => pullbarEl,
