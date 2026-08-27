@@ -7,6 +7,7 @@
     "$env/static/public",
     "./coord",
     "./glyphStack",
+    "./map.css",
     "./safeEase",
     "./safeMap",
     "@capacitor/core",

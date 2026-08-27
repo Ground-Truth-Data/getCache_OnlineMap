@@ -3,6 +3,27 @@ import { onMount } from "svelte";
 import { goto, replaceState } from "$app/navigation";
 import { page } from "$app/stores";
 import "mapbox-gl/dist/mapbox-gl.css";
+// THE CHILD CARRIES ITS OWN STYLESHEET.
+//
+// map.css used to be pulled in ONLY by each parent's app.css, as
+// `@import '../../getCache_OnlineMap/lib/map.css'` — a raw climb from the
+// parent sideways INTO this child. That is backwards: children reach up to a
+// parent through $parent, parents do not reach down into children by name. It
+// also made the parent unbuildable without this child on disk, which is what
+// broke a one-child install of rapper.
+//
+// Same lesson as the comment on .viewport-layout below, which moved three
+// rules in here for the same reason: "A child must not need a global
+// stylesheet the host might not have." This finishes that job for the rest of
+// the file, and the parent-side @import is deleted rather than left as a
+// second, silent copy.
+//
+// Vite injects this at runtime, AFTER the parent's app.css. Safe here because
+// every rule this adds is UNLAYERED while the mapbox/maplibre vendor CSS is
+// demoted into `layer(vendor)` — and an unlayered rule beats a layered one
+// regardless of source order. Cf. getCache_OfflineMap's maplibreVendor.css,
+// which relies on exactly the same ordering.
+import "./map.css";
 import InfoPanel from "./mapInfoPanel.svelte";
 import MapNavButtons from "./mapNavButtons.svelte";
 import { fullMapOptions, initializeMap } from "./mapInit";
