@@ -42,7 +42,7 @@ import tracksIconUrl from "./assets/mobileAssets/tracks_goldV3.webp";
 let {
     map = $bindable(null),
     drawIntent = $bindable(null),
-    // Persistence hooks — the harness is UI-only and never stores anything itself.
+    // Persistence hooks — rapper is UI-only and never stores anything itself.
     // A consumer that wants finished drawings to survive navigation/refresh
     // passes `onFeatureComplete` (called with each finalized GeoJSON feature)
     // and `initialFeatures` (restored into the completed-features source on

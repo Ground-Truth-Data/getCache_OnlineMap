@@ -76,7 +76,7 @@ function blockBrowserZoom() {
 }
 
 // ─── OVERRIDE PATTERN ───────────────────────────────────────────────────────
-// The harness defaults to its own assets. ReTreever (or any consumer) passes props
+// rapper defaults to its own assets. ReTreever (or any consumer) passes props
 // to swap them. To add a new overrideable asset, add an `export let` here.
 //
 // Where these props are passed in from:
@@ -101,7 +101,7 @@ export let variant: "land" | "org" = "land";
 export let polygonsUrl = "/polygons";
 export let organizationsUrl = "/organizations";
 // Draw-tool persistence hooks — threaded straight through to
-// MapDrawControls (mapDrawControls.svelte). The harness never stores drawings itself;
+// MapDrawControls (mapDrawControls.svelte). rapper never stores drawings itself;
 // the consumer persists finished features and hands them back on load.
 export let onFeatureComplete:
     | ((feature: import("geojson").Feature) => void)

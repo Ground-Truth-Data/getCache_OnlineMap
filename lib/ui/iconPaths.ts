@@ -6,9 +6,9 @@
 // applies stroke="currentColor", round caps/joins — so every glyph is
 // written down ONCE here instead of pasted inline across components.
 //
-// Lives in the harness so BOTH the open map components AND the proprietary
-// ReTreever components share ONE catalog (ReTreever imports via $parent/siblings, the harness
-// via $lib — the legal ReTreever→harness / harness→harness directions).
+// Lives in rapper so BOTH the open map components AND the proprietary
+// ReTreever components share ONE catalog (ReTreever imports via $parent/siblings, rapper
+// via $lib — the legal ReTreever→rapper / rapper→rapper directions).
 //
 // These are monochrome lucide-style line icons. Multi-colour brand marks
 // (Google/Apple), gradient sliders and animated SVGs are NOT here — they're

@@ -79,7 +79,7 @@ export interface MapOptions {
      * fallback position and filters around the wrong place.
      *
      * The app supplies it (live position → last known → last feature), since
-     * the harness is UI-only and must not read mobile stores itself.
+     * rapper is UI-only and must not read mobile stores itself.
      */
     hospitalAnchor?: (() => [number, number] | null) | null;
     /**
@@ -87,7 +87,7 @@ export interface MapOptions {
      * popup's GPS button; the APP owns the whole behaviour (permission gate,
      * pan to the blue dot, the coordinate pill with its share menu).
      *
-     * Same reason as hospitalAnchor: the harness is UI-only. It must not call
+     * Same reason as hospitalAnchor: rapper is UI-only. It must not call
      * navigator.geolocation itself — doing so created a SECOND location path
      * that bypassed the app's location gate and re-fetched a fix the app
      * already had in memory. The button is a door; the app is the room.

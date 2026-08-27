@@ -270,7 +270,7 @@ export function setupDrawSourcesAndLayers(
 	 * written to by anything — 3 sources of worker tile state and 6 layers of
 	 * GPU buffers for a code path that cannot run.
 	 *
-	 * They are NOT deleted because the harness desktop host (mapDrawControls.svelte)
+	 * They are NOT deleted because the rapper desktop host (mapDrawControls.svelte)
 	 * genuinely draws through them.
 	 */
 	withInProgress = true,
@@ -1002,7 +1002,7 @@ export function clearInProgressSources(map: MapboxMap): void {
  * layer (`ReTreever/src/lib/mobile/stores/mapStore.svelte.ts`) supplies
  * the canonical default via `defaultFeatureName` per
  * `ReTreever/src/lib/mobile/docs/NAMING_CONVENTIONS.md`. Don't fill it
- * here; the harness is naming-convention-agnostic.
+ * here; rapper is naming-convention-agnostic.
  */
 export function finalizeFeature(
 	intent: Exclude<DrawIntent, null>,

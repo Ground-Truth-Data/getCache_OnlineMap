@@ -18,7 +18,7 @@
   $lib/core/icon/.
 
   It used to be one file in the harness, shared by both sides. RAPPER ends
-  that: the harness becomes a thin standalone package a stranger installs, so
+  that: rapper becomes a thin standalone package a stranger installs, so
   a child cannot reach into a parent that is no longer there. A published
   child must be self-contained, and a third package for one 24x24 icon
   component is not worth the release ceremony.
