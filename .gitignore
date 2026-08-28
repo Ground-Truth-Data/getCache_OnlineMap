@@ -2,3 +2,19 @@ node_modules/
 .svelte-kit/
 .DS_Store
 *.log
+
+# ── Environment variables & secrets ─────────────────────────────────────────
+# This repo is PUBLIC and is also packed into the npm tarball, and npm-packlist
+# honours this file. Mirrors ReTreever/.gitignore:89-106.
+.env
+.env.*
+.env.local
+!.env.example
+credentials*.json
+*.pem
+*.key
+secrets/
+.secrets/
+# Cloudflare Workers local secrets + state.
+.dev.vars
+.wrangler/

@@ -496,9 +496,38 @@ export function initializeMap(
     }
 
     if (!mapboxAccessToken) {
-        console.error("Mapbox access token is required");
+        // SAY WHICH VARIABLE, AND SAY IT ON THE PAGE.
+        //
+        // This used to be `console.error("Mapbox access token is required")`
+        // and nothing else. Three things were wrong with that for anyone who
+        // did not already know this codebase: it never names the variable, so
+        // there is nothing to search for; it never says which file to set it
+        // in; and it goes only to the console, while the page shows an empty
+        // box that reads as "the map is broken" rather than "the map is not
+        // configured". The variable name appears in no file that ships — it
+        // lives in ReTreever/.env.schema, which is not part of this repo.
+        const name = "VITE_MAPBOX_TOKEN";
+        const msg =
+            `${name} is not set, so no map can be created.\n` +
+            `Add it to rapper/.env (see rapper/.env.example) and restart the dev server.\n` +
+            `Free tokens: https://account.mapbox.com/access-tokens/`;
+        console.error(msg);
+
+        // Painted into the container, because the console is not where someone
+        // looks first at a blank rectangle. Same createElement approach as the
+        // zoom readout below; no innerHTML, so nothing here can inject markup.
+        const note = document.createElement("div");
+        note.style.cssText =
+            "padding:1rem;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;" +
+            "white-space:pre-wrap;color:#b3261e;background:#fff4f2;border:1px solid #f0c9c2;" +
+            "border-radius:6px;margin:1rem;max-width:52ch";
+        note.textContent = msg;
+        container.appendChild(note);
+
         return () => {
-            /* no map was created — nothing to clean up */
+            // The note IS the only thing this call created, so it is the only
+            // thing to undo — otherwise a re-init stacks a second copy.
+            note.remove();
         };
     }
 
