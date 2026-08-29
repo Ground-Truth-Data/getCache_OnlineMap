@@ -15,9 +15,10 @@ import MapPage from "../../../lib/mapPage.svelte";
 // `$parent/retreeved/…` and renders only in `vite dev`, so nothing here
 // reaches a build. No docks: the online map has no rails to dock.
 import EphemeralCard from "$parent/retreeved/sharedComponents/effemeralCard/EphemeralCard.svelte";
+import EphemeralDock from "$parent/retreeved/sharedComponents/effemeralCard/EphemeralDock.svelte";
 
 let debugHost = $state<HTMLElement>();
 </script>
 
 <MapPage variant="org" {debugHost} />
-<EphemeralCard title="online map" bind:host={debugHost} />
+<EphemeralDock side="left"><EphemeralCard title="online map" bind:host={debugHost} /></EphemeralDock>
