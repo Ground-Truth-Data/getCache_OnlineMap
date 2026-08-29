@@ -33,26 +33,16 @@ import {
 } from "./mapDraw";
 import { syncAreaLabels } from "./areaLabels";
 
-// Imported, not requested from the host as "/mobileAssets/...". The bundler
-// resolves this at build time so the bytes travel with the child; a
-// leading-slash URL would only resolve against a server that happens to hold
-// that file.
+// Imported (not a leading-slash "/mobileAssets/..." URL) — the bundler resolves this at build time so bytes travel with the child; a URL would only resolve on a server that happens to hold the file.
 import tracksIconUrl from "./assets/mobileAssets/tracks_goldV3.webp";
 
 let {
     map = $bindable(null),
     drawIntent = $bindable(null),
-    // Persistence hooks — rapper is UI-only and never stores anything itself.
-    // A consumer that wants finished drawings to survive navigation/refresh
-    // passes `onFeatureComplete` (called with each finalized GeoJSON feature)
-    // and `initialFeatures` (restored into the completed-features source on
-    // mount). With neither prop, drawings stay ephemeral component state.
+    // Persistence hooks — rapper is UI-only and never stores anything itself; without onFeatureComplete/initialFeatures, drawings stay ephemeral component state.
     onFeatureComplete = undefined,
     initialFeatures = [],
-    // "drawer" renders the built-in shovel drawer + tool strip. "external"
-    // renders only the map-anchored draw popover; the consumer supplies its
-    // own buttons and drives the engine via bind:drawIntent + the exported
-    // setMode()/undo()/clearAll() instance functions.
+    // "drawer" renders the built-in shovel drawer + tool strip; "external" renders only the draw popover — consumer supplies buttons and drives via bind:drawIntent + setMode()/undo()/clearAll().
     chrome = "drawer",
 }: {
     map: MapboxMap | null;
@@ -62,20 +52,14 @@ let {
     chrome?: "drawer" | "external";
 } = $props();
 
-// ── Drawer drag-slide state ─────────────────────────────────────────────
-// Identical mechanics to StatsDrawer on /mobile/getcache. Drawer is a
-// 68%-tall panel anchored to the bottom of the map container; we move it
-// with translateY. Closed = handle peeking (HANDLE_PX above bottom);
-// open = translateY 0.
+// Drawer is a 68%-tall panel moved via translateY — closed = HANDLE_PX peeking, open = translateY 0 (same mechanics as StatsDrawer).
 const HANDLE_PX = 64; // matches .shovel-pullbar height (4rem)
 let drawerEl: HTMLDivElement | undefined = $state();
-// The pull-bar element — bound so the tall grab band can measure its top
-// edge (the band runs from there to the bottom of the screen).
+// Pull-bar element — bound so the tall grab band can measure its top edge (band runs from there to the bottom of the screen).
 let pullbarEl: HTMLDivElement | undefined = $state();
 // The drawer body — bound so the grab band knows where its floor is.
 let bodyEl: HTMLDivElement | undefined = $state();
-// Big initial value → drawer starts off-screen so there's no "flash open"
-// on mount before the closed-offset is computed.
+// Big initial value → drawer starts off-screen, avoiding a "flash open" before the closed-offset is computed.
 let drawerOffset = $state(10000);
 let drawerReady = $state(false);
 let isDraggingDrawer = $state(false);
@@ -85,9 +69,7 @@ function getClosedOffset(): number {
     return Math.max(0, h - HANDLE_PX);
 }
 
-// Initial offset — must NOT depend on isDraggingDrawer or the drawer would
-// snap shut the instant the user releases. `drawerEl` is the only dep so
-// this re-runs once when the bind resolves.
+// Must NOT depend on isDraggingDrawer or the drawer snaps shut the instant the user releases; drawerEl is the only dep, so this re-runs once when the bind resolves.
 $effect(() => {
     if (drawerEl) {
         drawerOffset = getClosedOffset();
@@ -103,8 +85,7 @@ $effect(() => {
     return () => window.removeEventListener("resize", onResize);
 });
 
-// Drawer is "open" when it's all the way up (offset near 0). Used by
-// the scrim + body opacity + the fist-swap on the shovel image.
+// Drawer is "open" when offset is near 0 — drives the scrim, body opacity, and the fist-swap on the shovel image.
 let drawerOpen = $derived(drawerOffset < 4);
 
 let editMode = $state(false); // tapped EDIT, strip shown, no tool picked yet
@@ -122,8 +103,7 @@ let finishTimeout: ReturnType<typeof setTimeout> | null = null;
 
 let completedFeatures: Feature[] = $state([]);
 
-// Grid state — see mapGrid.ts. `off` hides layers; `standard` shows hectare
-// dots; `fine` adds the 3×3 sub-dots.
+// Grid state (see mapGrid.ts): off hides layers, standard shows hectare dots, fine adds the 3×3 sub-dots.
 let gridMode: GridMode = $state("off");
 let gridTooDense = $state(false);
 
@@ -235,12 +215,7 @@ function closeDrawer() {
     drawerOffset = getClosedOffset();
 }
 
-// Drag-to-slide via the SHARED tall grab band — the same gesture the stats
-// drawer uses, so both pages feel identical. The band reaches from the
-// shovel's top edge all the way to the bottom of the screen (straight
-// through the tab bar), and only claims the finger once it has travelled
-// ~6px vertically, so taps on anything inside it still work.
-// Mechanics + reasoning: $parent/siblings/getCache_OnlineMap/lib/shared/shovelGrabBand.ts.
+// Drag-to-slide via the shared tall grab band (same gesture as StatsDrawer) — only claims the finger after ~6px vertical travel, so taps inside it still work. See shovelGrabBand.ts.
 $effect(() => {
     return attachShovelGrabBand({
         handle: () => pullbarEl,
@@ -265,9 +240,7 @@ $effect(() => {
                     drawerOffset < closedOffset * 0.75 ? 0 : closedOffset;
             }
         },
-        // Touches that would land in the drawer's own body belong to the body
-        // (its buttons), not to the drag. The handle is a SIBLING of the
-        // body, so pulling the drawer back DOWN by its handle still works.
+        // Touches landing in the drawer body belong to the body's buttons, not the drag; the handle is a SIBLING of the body, so pulling the drawer back down by the handle still works.
         getBody: () => bodyEl,
     });
 });
@@ -307,9 +280,7 @@ let drawStripVisible = $derived(
     chrome === "drawer" && !drawerOpen && (editMode || drawIntent !== null),
 );
 
-// ── External-chrome instance API ────────────────────────────────────────
-// For consumers that render their own tool buttons (chrome="external"):
-// grab the component with bind:this and call these.
+// External-chrome instance API — consumers rendering their own tool buttons (chrome="external") grab the component with bind:this and call these.
 export function setMode(mode: "polygon" | "line") {
     setDrawMode(mode === "polygon" ? "draw_polygon" : "draw_line_string");
 }
@@ -339,9 +310,7 @@ function finishDraw() {
     const feature = finalizeFeature(drawIntent, drawnVertices);
     completedFeatures = [...completedFeatures, feature];
     updateCompletedSource();
-    // Hand the finished feature to the consumer for persistence — without
-    // this, the ✓ checkmark below would celebrate a drawing that only lives
-    // in component state and dies on navigation/refresh.
+    // Hands the finished feature to the consumer for persistence — without this, the ✓ checkmark below celebrates a drawing that only lives in component state and dies on navigation/refresh.
     onFeatureComplete?.(feature);
 
     finishedBbox = drawBbox;
@@ -399,15 +368,11 @@ let attachedToMap: MapboxMap | null = null;
 $effect(() => {
     if (!map || attachedToMap === map) return;
     attachedToMap = map;
-    // Snapshot the instance: `map` is a $bindable the consumer nulls during
-    // page teardown, so the cleanup below must not re-read the live prop.
+    // Snapshot the instance — map is a $bindable the consumer nulls during teardown, so cleanup below must not re-read the live prop.
     const m = map;
 
     setupDrawSourcesAndLayers(m, getAccentColor());
-    // Restore consumer-persisted drawings into the completed-features source.
-    // untrack: completedFeatures is read AND written here — tracked, it would
-    // become a dependency of this attach effect and re-trigger it (tearing
-    // down the map listeners) on every finished drawing.
+    // untrack: completedFeatures is read AND written here — tracked, it would become a dependency of this effect and re-trigger it (tearing down map listeners) on every finished drawing.
     untrack(() => {
         if (initialFeatures.length > 0 && completedFeatures.length === 0) {
             completedFeatures = [...initialFeatures];
@@ -473,8 +438,7 @@ $effect(() => {
     ></div>
 {/if}
 
-<!-- Shovel drawer panel. Always full-height; translateY slides it so only
-     the shovel peeks when closed. Same mechanics as StatsDrawer. -->
+<!-- Shovel drawer panel: always full-height; translateY slides it so only the shovel peeks when closed (same mechanics as StatsDrawer). -->
 {#if chrome === "drawer"}
 <div
     bind:this={drawerEl}
@@ -484,17 +448,13 @@ $effect(() => {
     class:ready={drawerReady}
     style="transform: translateY({drawerOffset}px)"
 >
-    <!-- Shovel pull-bar — the drawer's top edge. Fist appears while
-         dragging or fully open. Shared with StatsDrawer via ShovelHandle. -->
+    <!-- Shovel pull-bar (drawer's top edge) — fist appears while dragging or fully open; shared with StatsDrawer via ShovelHandle. -->
     <div
         bind:this={pullbarEl}
         class="shovel-pullbar"
         class:pullbar-open={drawerOpen}
     >
-        <!-- Dragging is owned by the shared grab band (see the script). There
-             is NO tap-to-toggle: the shovel is a handle you swipe, not a
-             button, so a pointer tap deliberately does nothing. `onActivate`
-             is the keyboard-only path (Enter/Space). -->
+        <!-- Dragging is owned by the shared grab band — there is NO tap-to-toggle; a pointer tap deliberately does nothing. onActivate is the keyboard-only path (Enter/Space). -->
         <ShovelHandle
             dragging={isDraggingDrawer || drawerOpen}
             onActivate={() => {
@@ -508,8 +468,7 @@ $effect(() => {
         <div class="pull-hint">PULL FOR MODULES</div>
     {/if}
 
-    <!-- Drawer body — always mounted so it slides into view with the drag.
-         Fades/pointer-events gated on drawerOpen. -->
+    <!-- Drawer body — always mounted so it slides into view with the drag; fades/pointer-events gated on drawerOpen. -->
     <div bind:this={bodyEl} class="drawer-body" class:body-open={drawerOpen}>
             <div class="drawer-section-label">
                 <span class="hr"></span>
@@ -701,10 +660,6 @@ $effect(() => {
         to   { opacity: 1; transform: scale(1); }
     }
 
-    /* ═══════════════════════════════════════════════
-       Shovel drawer
-       ═══════════════════════════════════════════════ */
-
     .drawer-scrim {
         position: absolute;
         inset: 0;
@@ -731,14 +686,12 @@ $effect(() => {
         transition: transform 0.3s cubic-bezier(.2,.8,.2,1);
     }
 
-    /* While the finger is down, kill the snap transition so the drawer
-       sticks to the pointer instead of lagging behind. */
+    /* While the finger is down, kill the snap transition so the drawer sticks to the pointer instead of lagging behind. */
     .shovel-drawer.is-dragging {
         transition: none;
     }
 
-    /* Pull-bar zone — matches StatsDrawer's .stats-drawer-handle so the
-       shovel sits in the same place with the same size on both pages. */
+    /* Pull-bar zone — matches StatsDrawer's .stats-drawer-handle so the shovel sits in the same place/size on both pages. */
     .shovel-pullbar {
         flex-shrink: 0;
         height: 4rem;
@@ -902,10 +855,6 @@ $effect(() => {
         border-color: rgba(255, 215, 0, 0.55);
     }
 
-    /* ═══════════════════════════════════════════════
-       Grid segmented control
-       ═══════════════════════════════════════════════ */
-
     .grid-control {
         position: absolute;
         left: 50%;
@@ -1000,10 +949,6 @@ $effect(() => {
         border: 1px solid rgba(255, 215, 0, 0.45);
         border-radius: 999px;
     }
-
-    /* ═══════════════════════════════════════════════
-       Mini draw strip (above shovel when editing)
-       ═══════════════════════════════════════════════ */
 
     .draw-strip {
         position: absolute;

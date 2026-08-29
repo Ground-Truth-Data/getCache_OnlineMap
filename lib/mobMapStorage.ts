@@ -1,26 +1,8 @@
-// Map overlay storage — small WebP files (~250 KB each, hundreds of KB max)
-// produced server-side by the GDAL container. Per CLAUDE.md the storage
-// substrate differs by runtime:
-//   - native     → @capacitor/filesystem (real disk, no quota issues)
-//   - dt-web /   → OPFS (Origin Private File System) — backed by IndexedDB
-//     mob-web      in WebKit; Safari has a known bug where writing a large
-//                  blob via writable.write(arrayBuffer) throws "operation
-//                  failed for an unknown transient reason (e.g. out of
-//                  memory)". The fix is to write the Blob directly so the
-//                  browser can stream it.
-//
-// WebPs replaced the old PDF blobs in Phase 2 of the GDAL rewrite. The on-
-// device PDF.js stack is gone; the only thing that lives here now is the
-// post-GDAL overlay image. ~20× smaller than the source PDF.
+// Storage differs by runtime: native → @capacitor/filesystem (real disk); web → OPFS (backed by IndexedDB).
 
 import { Capacitor } from "@capacitor/core";
 
-// Overlay-image storage directory. Resolved at CALL TIME so sandbox mode can
-// redirect every read/write to a parallel "maps-sandbox" directory — keeping
-// sandbox-imported map images out of the real store. We read a window global
-// (set by the proprietary sandbox code) rather than importing from
-// $lib/mobile, so rapper stays free of mobile/business dependencies (open-core
-// rule). Absent global → real "maps".
+// Resolved at call time (not module load) so sandbox mode can redirect to "maps-sandbox"; reads a window global rather than importing $lib/mobile (open-core). Absent global → real "maps".
 function mapsDir(): string {
 	const active =
 		typeof window !== "undefined" &&
@@ -44,9 +26,7 @@ interface MetaRecord {
 	savedAt: string;
 }
 
-/** URL for a stored overlay + a revoke callback the caller MUST invoke when
- * done. On native the callback is a no-op (`convertFileSrc` URLs are static).
- * On web it revokes the blob URL created by `URL.createObjectURL`. */
+/** URL for a stored overlay + a revoke callback the caller MUST invoke when done (no-op on native; revokes the blob URL on web). */
 export interface OverlayHandle {
 	url: string;
 	revoke: () => void;
@@ -58,12 +38,7 @@ function safeKey(filename: string): string {
 	return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-// Eviction notification. The LRU cap below deletes the oldest WebPs, but the
-// OWNING overlay feature row lives in the proprietary store, which rapper must
-// not import (open-core split). So we emit the evicted keys and let the store
-// side sweep the matching rows — otherwise eviction orphans a row that points
-// at a deleted image (the kmzExport:overlayLoad NotFound noise). Register from
-// the store with onMapsEvicted; rapper stays free of store/business logic.
+// LRU eviction here can't touch the owning feature row (lives in the proprietary store, open-core split) — emit evicted keys via onMapsEvicted so the store side sweeps orphaned rows.
 type EvictionListener = (evictedKeys: string[]) => void;
 let evictionListener: EvictionListener | null = null;
 
@@ -79,8 +54,6 @@ function notifyEvicted(keys: string[]): void {
 		// A listener throwing must never break a storage save.
 	}
 }
-
-// ── Native (Capacitor Filesystem) ────────────────────────────────────────────
 
 async function nativeFs() {
 	const { Filesystem, Directory, Encoding } = await import(
@@ -167,8 +140,7 @@ async function nativeGetUrl(key: string): Promise<OverlayHandle> {
 		path: `${mapsDir()}/${key}`,
 		directory: Directory.Data,
 	});
-	// Capacitor file:// URLs fail in WKWebView/Android WebView — must rewrite
-	// to capacitor://localhost/_capacitor_file_/... See MAP_IMPORT_HANDOFF.md gotcha 3.
+	// Capacitor file:// URLs fail in WKWebView/Android WebView — must rewrite to capacitor://localhost/_capacitor_file_/... (see MAP_IMPORT_HANDOFF.md gotcha 3).
 	return {
 		url: Capacitor.convertFileSrc(uri),
 		revoke: () => {
@@ -176,8 +148,6 @@ async function nativeGetUrl(key: string): Promise<OverlayHandle> {
 		},
 	};
 }
-
-// ── Web (OPFS) ───────────────────────────────────────────────────────────────
 
 async function getMapsDir(): Promise<FileSystemDirectoryHandle> {
 	const root = await navigator.storage.getDirectory();
@@ -212,16 +182,14 @@ async function webSave(file: File): Promise<string> {
 	const fh = await dir.getFileHandle(key, { create: true });
 	const writable = await fh.createWritable();
 	try {
-		// Pass the Blob directly — the browser streams it. Materialising via
-		// file.arrayBuffer() first OOMed Safari on the old multi-MB PDFs;
-		// WebPs are smaller but the streaming write is still the right idea.
+		// Pass the Blob directly (not file.arrayBuffer()) — arrayBuffer() OOMed Safari on the old multi-MB PDFs; the browser streams a Blob write directly.
 		await writable.write(file);
 		await writable.close();
 	} catch (e) {
 		try {
 			await writable.close();
 		} catch {
-			// codestyle-allow-swallow: defensive second close of an already-failed stream; the original error `e` is rethrown/classified below
+			// Second close of an already-failed stream is intentionally swallowed — `e` is rethrown/classified below.
 		}
 		const msg = (e as Error).message ?? "";
 		if (
@@ -289,8 +257,6 @@ async function webGetUrl(key: string): Promise<OverlayHandle> {
 	return { url, revoke: () => URL.revokeObjectURL(url) };
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
-
 export async function saveMap(file: File): Promise<string> {
 	if (isNative()) {
 		const key = await nativeSave(file);
@@ -330,8 +296,7 @@ export async function loadMap(key: string): Promise<File> {
 	return isNative() ? nativeLoad(key) : webLoad(key);
 }
 
-/** Returns a URL suitable for Mapbox `ImageSource`. The handle MUST be
- * revoked by the caller (no-op on native, frees the blob URL on web). */
+/** URL for Mapbox ImageSource. The handle MUST be revoked by the caller (no-op on native, frees the blob URL on web). */
 export async function getMapUrl(key: string): Promise<OverlayHandle> {
 	return isNative() ? nativeGetUrl(key) : webGetUrl(key);
 }
@@ -360,44 +325,17 @@ export async function storageEstimate(): Promise<{
 	return { used: estimate.usage ?? 0, quota: estimate.quota ?? 0 };
 }
 
-// ── Per-map directory root (shared with vector tile package below) ──────────
-//
-// Previously housed both raster tile pyramids (Phase 4, reverted 2026-05-24)
-// and vector tile pyramids (Phase 5, current). Only the vector path still
-// uses this directory — the raster API (`saveTilePackage`, `readTileSidecar`,
-// `hasTilesOnDisk`, `getTileUrlTemplate`, `getThumbUrl`, `deleteTilePackage`)
-// was deleted in the revert. PDFs are back on the single-WebP path above.
-
 function tileDir(mapKey: string): string {
 	return `${mapsDir()}/${safeKey(mapKey)}`;
 }
 
-// ── Vector-tile-package API (Phase 5 — vector tile pyramid) ─────────────────
-//
-// The server (gdalConvert / tippecanoe, Phase 5) returns a ZIP containing:
-//   vtiles/{z}/{x}/{y}.pbf  +  vsidecar.json
-//
-// Lets multi-thousand-feature KMLs render without flooding the synced
-// TinyBase DB ([[big-map-storage-split]]); tiles are mounted via a Mapbox
-// VectorSource against the on-disk tree. The sidecar is named
-// `vsidecar.json` (a separate name was chosen back when a raster sibling
-// `sidecar.json` lived in the same per-map directory; the raster pyramid was
-// reverted 2026-05-24 — PDFs are back on the single-WebP path above — but
-// the `vsidecar.json` name stayed because changing it would orphan any
-// existing on-device bakes).
-//
-// NATIVE ONLY for v1 — web (OPFS) tile serving needs a Service Worker that
-// maps tile URL fetches to local storage, which is a separate slice of work.
-// Per MAP_IMPORTS_UNIFIED.md §1.3 we fail loudly with a clear error rather
-// than silently degrade ([[no-silent-fallbacks]]).
+// Baked package (gdalConvert/tippecanoe, Phase 5): ZIP of vtiles/{z}/{x}/{y}.pbf + vsidecar.json.
+// vsidecar.json name is fixed — renaming it would orphan existing on-device bakes.
+// NATIVE ONLY for v1 — web has no OPFS tile-serving Service Worker yet; fails loudly rather than silently degrading.
 
 const VTILES_SUBDIR = "vtiles";
 const VSIDECAR_FILE = "vsidecar.json";
-// The Cloudflare container writes the sidecar as `sidecar.json` inside the
-// vtiles ZIP — a pre-existing naming mismatch with the client's canonical
-// `vsidecar.json` (kept on the client side per the comment above to avoid
-// orphaning legacy stores). Accept either name when unpacking; the canonical
-// re-write at the bottom of `saveVectorTilePackage` normalises on disk.
+// Container writes the sidecar as sidecar.json (mismatched with the client's vsidecar.json) — accept either name when unpacking; saveVectorTilePackage re-writes canonically on disk.
 const CONTAINER_SIDECAR_FILE = "sidecar.json";
 
 export interface VectorTileSidecar {
@@ -407,18 +345,14 @@ export interface VectorTileSidecar {
 	minzoom: number;
 	maxzoom: number;
 	bakedAt: number;
-	/** Total feature count baked into the pyramid — surfaced in the inbox
-	 * card subtitle ("412 features") without re-reading any tile. */
+	/** Total feature count baked into the pyramid — surfaced in the inbox card subtitle without re-reading any tile. */
 	featureCount?: number;
-	/** Tile body format. Today: `"mvt"` (Mapbox Vector Tile, gzip-compressed
-	 *  protobuf) — what tippecanoe emits. Reserved for future variants. */
+	/** Tile body format — today "mvt" (gzip-compressed protobuf), what tippecanoe emits; reserved for future variants. */
 	vtileFormat?: string;
 	sourceFile?: string;
 }
 
-/** Unpack a baked vector-tile-package ZIP into mobMapStorage/{mapKey}/vtiles/.
- * Returns the parsed sidecar so the caller can stamp the mapTable cells
- * (vtilesMinZoom etc.). NATIVE ONLY — throws on web for now. */
+/** Unpack a baked vector-tile-package ZIP into mobMapStorage/{mapKey}/vtiles/, returning the parsed sidecar. NATIVE ONLY — throws on web for now. */
 export async function saveVectorTilePackage(
 	mapKey: string,
 	zipFile: File,
@@ -433,11 +367,7 @@ export async function saveVectorTilePackage(
 	const root = tileDir(mapKey);
 	const vtilesRoot = `${root}/${VTILES_SUBDIR}`;
 
-	// Wipe any previous vector bake for this map — idempotent re-import per
-	// [[idempotent-import-principle]]. Only nuke the vtiles subdir, NOT the
-	// whole map directory: a sibling raster tile package may live alongside
-	// (e.g. a KMZ with both vector features and a GroundOverlay) and we
-	// don't want to nuke that.
+	// Wipe only the vtiles subdir, NOT the whole map directory — a sibling raster tile package (e.g. from a mixed KMZ) may live alongside and must survive.
 	try {
 		await Filesystem.rmdir({
 			path: vtilesRoot,
@@ -463,8 +393,7 @@ export async function saveVectorTilePackage(
 	let sidecar: VectorTileSidecar | null = null;
 	for (const [name, bytes] of Object.entries(entries)) {
 		if (name.endsWith("/")) continue; // directory entry
-		// Normalise the container's `sidecar.json` to the client's canonical
-		// `vsidecar.json` on disk. Tiles ride through under their own names.
+		// Normalise the container's sidecar.json to the client's canonical vsidecar.json on disk; tiles ride through under their own names.
 		const onDiskName =
 			name === CONTAINER_SIDECAR_FILE ? VSIDECAR_FILE : name;
 		const path = `${root}/${onDiskName}`;
@@ -491,8 +420,7 @@ export async function saveVectorTilePackage(
 			`[mobMapStorage] vector tile package for ${mapKey} missing ${VSIDECAR_FILE}`,
 		);
 	}
-	// Re-write the sidecar as canonical JSON so a downstream read parses
-	// cleanly regardless of how the bake serialized it.
+	// Re-write the sidecar as canonical JSON so a downstream read parses cleanly regardless of how the bake serialized it.
 	await Filesystem.writeFile({
 		path: `${root}/${VSIDECAR_FILE}`,
 		directory: Directory.Data,
@@ -503,9 +431,7 @@ export async function saveVectorTilePackage(
 	return sidecar;
 }
 
-/** Read the vector-tile sidecar for a map. Returns null if no vector tile
- * package is on disk (cloud-restored device case → caller surfaces
- * TILES_NOT_ON_DEVICE). NATIVE ONLY. */
+/** Read the vector-tile sidecar for a map. Returns null if none is on disk (cloud-restored device → caller surfaces TILES_NOT_ON_DEVICE). NATIVE ONLY. */
 export async function readVectorTileSidecar(
 	mapKey: string,
 ): Promise<VectorTileSidecar | null> {
@@ -523,17 +449,13 @@ export async function readVectorTileSidecar(
 	}
 }
 
-/** True if a vector tile pyramid is on disk for this mapKey. Used by the
- * renderer to decide between mounting a VectorSource and surfacing
- * TILES_NOT_ON_DEVICE (per §11 of MAP_IMPORTS_UNIFIED.md). */
+/** True if a vector tile pyramid is on disk for this mapKey — used to decide between mounting a VectorSource and surfacing TILES_NOT_ON_DEVICE. */
 export async function hasVectorTilesOnDisk(mapKey: string): Promise<boolean> {
 	if (!isNative()) return false;
 	return (await readVectorTileSidecar(mapKey)) !== null;
 }
 
-/** Mapbox VectorSource `tiles` template for the on-disk pyramid. The
- * `{z}/{x}/{y}` placeholders are interpolated by Mapbox per tile request.
- * NATIVE ONLY — web doesn't expose Filesystem URIs as fetchable URLs. */
+/** Mapbox VectorSource tiles template for the on-disk pyramid ({z}/{x}/{y} interpolated by Mapbox). NATIVE ONLY — web doesn't expose Filesystem URIs as fetchable URLs. */
 export async function getVectorTileUrlTemplate(
 	mapKey: string,
 ): Promise<string> {
@@ -547,14 +469,11 @@ export async function getVectorTileUrlTemplate(
 		path: `${tileDir(mapKey)}/${VTILES_SUBDIR}`,
 		directory: Directory.Data,
 	});
-	// Capacitor.convertFileSrc rewrites file:// → capacitor://localhost/...
-	// .pbf is the conventional MVT extension; tippecanoe emits gzip-
-	// compressed protobuf with this name.
+	// Capacitor.convertFileSrc rewrites file:// → capacitor://localhost/...; .pbf is the conventional MVT extension tippecanoe emits.
 	return `${Capacitor.convertFileSrc(uri)}/{z}/{x}/{y}.pbf`;
 }
 
-/** Wipe a map's vector tile package (vtiles subdir + sidecar) — idempotent.
- * Leaves any sibling raster tile package intact. */
+/** Wipe a map's vector tile package (vtiles subdir + sidecar) — idempotent; leaves any sibling raster tile package intact. */
 export async function deleteVectorTilePackage(mapKey: string): Promise<void> {
 	if (!isNative()) return;
 	const { Filesystem, Directory } = await nativeFs();

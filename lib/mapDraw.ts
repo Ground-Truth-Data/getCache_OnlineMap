@@ -1,13 +1,3 @@
-// Shared draw-engine helpers.
-//
-// Pure, side-effect-free builders for GeoJSON FeatureCollections that feed the
-// Mapbox sources used by the draw UX (polygon + line). The reactive state
-// (drawIntent, drawnVertices, completedFeatures, …) stays in the Svelte
-// component that owns the draw UI. This module only knows about geometry.
-//
-// Consumers: `mobMapPage.svelte` today. `mapPage.svelte` when the desktop
-// draw UI lands (see mapDocs.md).
-
 import { area, featureCollection, intersect } from "@turf/turf";
 import type {
 	Feature,
@@ -37,13 +27,6 @@ const DRAW_SOURCE_IDS = [
 ] as const;
 const COMPLETED_SOURCE_ID = "completed-features";
 
-// ── Boundary pins ───────────────────────────────────────────────────────
-// Below this zoom a multi-hectare polygon is a sub-8px speck, so each saved
-// polygon ALSO feeds a clustered centroid source that renders as a tappable
-// rust pin (solo) or a counted bubble (several close together) — the stock
-// polygon-to-point degradation convention, same native-clustering recipe as
-// the gold pin bubbles in pinMarkers.ts. At/above this zoom the pins vanish
-// and the polygons + area-name labels (areaLabels.ts) take over.
 export const BOUNDARY_PIN_MAXZOOM = 11;
 const CENTROID_SOURCE_ID = "completed-centroids";
 const CENTROID_CLUSTER_LAYER = "completed-centroid-cluster";
@@ -51,31 +34,12 @@ const CENTROID_CLUSTER_COUNT_LAYER = "completed-centroid-cluster-count";
 const CENTROID_PIN_LAYER = "completed-centroid-pin";
 const CENTROID_PIN_LABEL_LAYER = "completed-centroid-pin-label";
 
-// Polygon draw colours. The fill is a light orange; the outline + vertex
-// dots are a deeper orange rust so a polygon reads as orange — distinct
-// from lines, which keep the brown `accent` rust. The completed-stroke
-// and completed-vertices-dot layers are shared by both shape types, so
-// they switch colour with a data-driven `case` expression.
-// POLYGON_OUTLINE is exported as the polygon's default identity colour —
-// areaLabels.ts paints the area-name text with it when a polygon carries no
-// overlap-cycle colour.
+// POLYGON_OUTLINE is exported as the polygon's default identity colour — areaLabels.ts paints the area-name text with it when a polygon carries no overlap-cycle colour.
 const POLYGON_FILL = "#e8a06a";
 export const POLYGON_OUTLINE = "#d97c33";
-// Recorded GPS tracks render ReTreever GOLD so they read apart from
-// hand-drawn lines (brown accent) at a glance and stay visible on
-// satellite imagery — sage was too faint in the field.
 const TRACK_GOLD = "#ffd700";
 
-// ── Overlap colour cycle ────────────────────────────────────────────────
-// Overlapping polygons cycle through rainbow colours so stacked plots stay
-// tellable-apart. Slot 0 is the original rust — a polygon that overlaps
-// nothing keeps it and anchors a "stack" as its parent. Every later polygon
-// that joins a stack (overlaps any member) takes the NEXT rainbow colour in
-// creation order — red, yellow, green, blue, indigo, violet, then red again —
-// a plain per-stack sequence, NOT smallest-unused-colour (that made every
-// child that only overlaps the parent identically red). Each stack counts
-// from red independently. "Earlier" = array order, i.e. creation order, so
-// colours are stable as a map grows.
+// Colour cycle order: red, yellow, green, blue, indigo, violet, then red again per stack — a plain sequence, NOT smallest-unused-colour (that made every child overlapping only the parent come out identically red).
 const POLYGON_COLOR_CYCLE: ReadonlyArray<{ fill: string; stroke: string }> = [
 	{ fill: POLYGON_FILL, stroke: POLYGON_OUTLINE }, // rust — the original
 	{ fill: "#cf4444", stroke: "#b82222" }, // red
@@ -106,12 +70,7 @@ function bboxesIntersect(a: RingBbox, b: RingBbox): boolean {
 	return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
 }
 
-/** True when two polygons share interior AREA. Uses polygon clipping rather
- *  than `booleanOverlap` because the latter line-intersects the boundaries —
- *  adjacent plots sharing an edge or corner would count, and touching must
- *  NOT recolour. Containment falls out for free (the clip is the inner
- *  polygon). The 1 m² floor ignores sliver artifacts from near-coincident
- *  edges. */
+// Polygon clipping, not booleanOverlap — booleanOverlap flags merely-touching plots as overlapping and wrongly recolours them; the 1m² floor ignores sliver artifacts.
 function polygonsShareArea(a: Feature<Polygon>, b: Feature<Polygon>): boolean {
 	try {
 		const clip = intersect(featureCollection<Polygon>([a, b]));
@@ -121,11 +80,7 @@ function polygonsShareArea(a: Feature<Polygon>, b: Feature<Polygon>): boolean {
 	}
 }
 
-/** Colour-cycle entry per feature index for polygons that need a non-rust
- *  colour. Polygons that overlap nothing are absent (they keep the default
- *  rust paint via the layer's `coalesce` fallback). Exported so
- *  areaLabels.ts can paint each name label in its polygon's identity
- *  colour from the SAME assignment the fill/stroke layers use. */
+// Colour-cycle entry per feature index (absent = default rust). Exported so areaLabels.ts can paint each label in the SAME identity colour these fill/stroke layers use.
 export function assignOverlapColors(
 	features: Feature[],
 ): Map<number, { fill: string; stroke: string }> {
@@ -143,8 +98,7 @@ export function assignOverlapColors(
 		if (feat.geometry?.type !== "Polygon") continue;
 		const poly = feat as Feature<Polygon>;
 		const bbox = outerRingBbox(poly.geometry);
-		// Earliest-drawn overlapping polygon decides which stack this one
-		// joins (a polygon bridging two stacks joins the older one).
+		// Earliest-drawn overlapping polygon decides which stack this one joins (a polygon bridging two stacks joins the older one).
 		let root = -1;
 		for (let p = 0; p < placed.length; p++) {
 			const prev = placed[p];
@@ -169,23 +123,13 @@ export function assignOverlapColors(
 	return out;
 }
 
-/** Fill opacity for a completed polygon with no per-feature override.
- *  Exported so the fill-opacity slider UI shows the same resting value
- *  the layer paints with. Per-feature override = a `fillOpacity` (0–1)
- *  property on the feature, persisted in its geometry JSON. */
+// Default fill-opacity for a polygon with no per-feature override (the fill-opacity slider UI's resting value).
 export const POLYGON_FILL_OPACITY_DEFAULT = 0.3;
 
-/** Stacked polygons compound their translucency (Mapbox paints each fill
- *  separately — there's no flatten), so a 3-deep pile of 0.3 fills reads
- *  0.66 and hides the imagery. Children of a stack therefore paint thinner:
- *  compounding still happens (depth stays legible) but much slower.
- *  Display-only, stamped as `_stackFillOp` by buildCompletedFC. */
+// Mapbox doesn't flatten stacked fills — opacity compounds, so stacked children paint thinner (STACKED_FILL_OPACITY) to stay legible; stamped as _stackFillOp by buildCompletedFC.
 const STACKED_FILL_OPACITY = 0.15;
 
-/** Data-driven fill-opacity: a polygon's own `fillOpacity` property wins
- *  (the user moved the slider), then the stacked-child damper, then the
- *  default. `to-number` guards string values that survive a KML share
- *  round-trip. */
+// Fill-opacity precedence: per-feature fillOpacity > stacked-child damper > default; to-number guards string values surviving a KML round-trip.
 const POLYGON_FILL_OPACITY_EXPR: ExpressionSpecification = [
 	"case",
 	["has", "fillOpacity"],
@@ -195,14 +139,7 @@ const POLYGON_FILL_OPACITY_EXPR: ExpressionSpecification = [
 	POLYGON_FILL_OPACITY_DEFAULT,
 ];
 
-// ── Blanket polygon fill opacity ────────────────────────────────────────
-// The Legend's Polygon-row slider (polygonOpacity store) fades or BOOSTS
-// every polygon fill at once — a 0–2 multiplier over the per-feature
-// expression above (centre = 1 = as designed), so per-feature sliders and
-// the stack damper keep their relative look. Boosted opacities are capped
-// at fully opaque. Outlines never fade. Module-level so a mid-session
-// setupDrawSourcesAndLayers self-heal (post-setStyle re-add) recreates the
-// fill layer at the CURRENT slider value, not the default.
+// polygonFillFactor is module-level (not component state) so a post-setStyle layer rebuild reapplies the CURRENT slider value, not the default; outlines never fade.
 let polygonFillFactor = 1;
 
 function polygonFillOpacityExpr(): ExpressionSpecification {
@@ -210,9 +147,7 @@ function polygonFillOpacityExpr(): ExpressionSpecification {
 	return ["min", 1, ["*", polygonFillFactor, POLYGON_FILL_OPACITY_EXPR]];
 }
 
-/** Set the blanket fill-opacity factor (0–2, centre 1) and push it onto the
- *  mounted completed-fill layer. Called by the polygonOpacity store's
- *  applier (which maps its 0–1 slider value to 0–2). */
+// Sets the blanket fill-opacity factor (0–2, centre 1) and pushes it onto the mounted completed-fill layer.
 export function applyPolygonFillOpacity(map: MapboxMap, factor: number): void {
 	polygonFillFactor = Math.max(0, Math.min(2, factor));
 	if (map.getLayer("completed-fill")) {
@@ -242,49 +177,26 @@ const VERTEX_HANDLE_LAYERS = [
 	"completed-vertices-dot",
 ] as const;
 
-// Default filter for the vertex-handle layers: matches Point geometries
-// whose `_idx` is -1 — i.e. nothing, since every real feature's `_idx` is
-// >= 0. `setVertexHandlesForFeature` swaps in the selected feature's index.
+// Matches nothing (every real feature's _idx is >= 0) — the default hidden filter; setVertexHandlesForFeature swaps in a real index.
 const VERTEX_HANDLES_HIDDEN: FilterSpecification = [
 	"all",
 	["==", ["geometry-type"], "Point"],
 	["==", ["get", "_idx"], -1],
 ];
 
-/**
- * Adds all sources + layers required by the draw UX to the given map.
- * Truly idempotent — safe to call multiple times on the same map instance.
- */
+// Idempotent — safe to call multiple times on the same map instance.
 export function setupDrawSourcesAndLayers(
 	map: MapboxMap,
 	accent: string,
-	/**
-	 * Create the IN-PROGRESS drawing sources (`draw-edges`, `draw-vertices`,
-	 * `provisional-polygon`) and their 6 layers.
-	 *
-	 * ⚠️ Pass `false` on any host that does not draw geometry through THIS
-	 * module. The mobile map is such a host: geometry creation there is
-	 * "fully owned by <SnakeRuler>" (MapDrawControls.svelte:459), which brings
-	 * its own sources. So these three were created on every mobile map load,
-	 * held an empty FeatureCollection for the entire session, and were never
-	 * written to by anything — 3 sources of worker tile state and 6 layers of
-	 * GPU buffers for a code path that cannot run.
-	 *
-	 * They are NOT deleted because the rapper desktop host (mapDrawControls.svelte)
-	 * genuinely draws through them.
-	 */
+	/** ⚠️ Pass `false` on any host that doesn't draw geometry through THIS module (e.g. mobile, owned by SnakeRuler) — avoids wasted sources/GPU layers; kept true because rapper desktop draws through them. */
 	withInProgress = true,
 ): void {
-	// Keyed off a source that EVERY host creates. Keying it off `draw-edges`
-	// (which is now optional) would leave the guard permanently false on
-	// mobile, so each call would re-add the completed-* layers and throw
-	// "Layer already exists".
+	// Guard keys off completed-features (created by every host) — keying off the now-optional draw-edges would re-add layers on mobile and throw "Layer already exists".
 	if (map.getSource("completed-features")) return;
 
 	const empty = emptyFC();
 
-	// In-progress drawing — only for hosts that actually draw through this
-	// module. See `withInProgress` above.
+	// In-progress drawing — only for hosts that actually draw through this module. See withInProgress above.
 	if (withInProgress) {
 		map.addSource("draw-edges", { type: "geojson", data: empty });
 		map.addSource("draw-vertices", { type: "geojson", data: empty });
@@ -320,8 +232,7 @@ export function setupDrawSourcesAndLayers(
 			type: "line",
 			source: "provisional-polygon",
 			filter: ["==", "$type", "LineString"],
-			// The provisional-polygon source only ever holds polygon geometry,
-			// so this closing edge is always a polygon's — colour it orange.
+			// provisional-polygon only ever holds polygon geometry, so this closing edge is always a polygon's — colour it orange.
 			paint: {
 				"line-color": POLYGON_OUTLINE,
 				"line-width": 2.5,
@@ -342,9 +253,7 @@ export function setupDrawSourcesAndLayers(
 		});
 	} // end withInProgress
 
-	// Completed features — ALWAYS created. These are the user's saved shapes;
-	// they are visible on a cold map with no interaction, so there is nothing
-	// to defer here.
+	// Completed features are ALWAYS created — the user's saved shapes are visible on a cold map with no interaction.
 	map.addSource(COMPLETED_SOURCE_ID, { type: "geojson", data: empty });
 
 	map.addLayer({
@@ -352,26 +261,18 @@ export function setupDrawSourcesAndLayers(
 		type: "fill",
 		source: COMPLETED_SOURCE_ID,
 		filter: ["==", "$type", "Polygon"],
-		// `_fillCol` is the overlap-cycle colour stamped by buildCompletedFC;
-		// polygons that overlap nothing carry none and fall back to rust.
+		// _fillCol is the overlap-cycle colour stamped by buildCompletedFC; polygons that overlap nothing carry none and fall back to rust.
 		paint: {
 			"fill-color": ["coalesce", ["get", "_fillCol"], POLYGON_FILL],
 			"fill-opacity": polygonFillOpacityExpr(),
 		},
 	});
-	// Area label — the polygon's NAME at its centroid. Rendered as DOM
-	// markers by areaLabels.ts (needs the display font + multi-layer halo +
-	// per-polygon wrap width, which GL text can't do), NOT a symbol layer.
+	// Area-name labels render as DOM markers (areaLabels.ts), not a symbol layer — GL text can't do the needed font/halo/wrap-width.
 	map.addLayer({
 		id: "completed-stroke-halo",
 		type: "line",
 		source: COMPLETED_SOURCE_ID,
 		layout: { "line-cap": "round", "line-join": "round" },
-		// Tracks draw as TWO thin rails (below, via line-gap-width), so their
-		// halo splits into two matching thin halos — width 3 with a 1.5 gap
-		// puts a 0.75px dark reveal on each side of each 1.5px rail.
-		// Polygon outlines are slightly thinner than line strokes (accuracy >
-		// heft), so their halo slims too — same 1.25px reveal each side.
 		paint: {
 			"line-color": "#1a1a1a",
 			"line-width": [
@@ -396,13 +297,6 @@ export function setupDrawSourcesAndLayers(
 		type: "line",
 		source: COMPLETED_SOURCE_ID,
 		layout: { "line-cap": "round", "line-join": "round" },
-		// Polygon outlines render orange; line strokes keep the brown
-		// `accent` rust; recorded TRACKS go gold. One layer draws all
-		// three, so switch on featureType then geometry type. A TRACK draws
-		// as TWO parallel 1.5px rails — line-gap-width splits the stroke
-		// into a rail pair 3px apart, matching the logo's train track. Each
-		// rail stays whisper-thin; the crosstie layer below completes the
-		// railway.
 		paint: {
 			"line-color": [
 				"case",
@@ -412,8 +306,6 @@ export function setupDrawSourcesAndLayers(
 				["coalesce", ["get", "_strokeCol"], POLYGON_OUTLINE],
 				accent,
 			],
-			// Polygon outlines run a touch thinner (2.5px) than line strokes
-			// (3px) — a boundary should trace the ground accurately, not bulk up.
 			"line-width": [
 				"case",
 				["==", ["get", "featureType"], "track"],
@@ -425,14 +317,6 @@ export function setupDrawSourcesAndLayers(
 			"line-gap-width": ["case", ["==", ["get", "featureType"], "track"], 3, 0],
 		},
 	});
-	// THE RAILWAY JOKE — tracks get tiny crossties. The standard cartography
-	// trick: a second line layer over the rail pair whose dash pattern is a
-	// hair-short dash + long gap; because dash lengths scale with line-width,
-	// a wide (9px) line with a 0.12-width dash paints as a ~1px-thin bar
-	// ACROSS the rails every ~13px — little sleepers, no train required. At
-	// 9px the ties poke ~1.5px past each rail (rails span ±3px), matching
-	// the logo where sleepers overhang the rails. Same gold as the rails:
-	// texture at track zoom, a plain line from afar.
 	map.addLayer({
 		id: "completed-track-ties",
 		type: "line",
@@ -449,22 +333,13 @@ export function setupDrawSourcesAndLayers(
 			"line-dasharray": [0.12, 1.6],
 		},
 	});
-	// Vertex handles (white halo + accent dot) are an EDITING affordance.
-	// The completed-features source carries a synthesized Point per vertex
-	// of every polygon/line, so rendering them all at once turns a map of
-	// many shapes into a field of orbs. They start hidden and are revealed
-	// one feature at a time via `setVertexHandlesForFeature` while that
-	// feature is selected for editing.
-	// Pins (the user's actual data) are NOT in this source — they're
-	// rendered as DOM markers (mapboxgl.Marker), so click handling is
-	// native and click-through-style-swap is automatic.
+	// Vertex handles are an editing affordance, start hidden, revealed per-feature via setVertexHandlesForFeature; pins are NOT in this source — they render as DOM markers (mapboxgl.Marker) with native click handling.
 	map.addLayer({
 		id: "completed-vertices-halo",
 		type: "circle",
 		source: COMPLETED_SOURCE_ID,
 		filter: VERTEX_HANDLES_HIDDEN,
-		// TRACK vertices carry no halo — they're breadcrumbs, not editing
-		// handles, and a white ring on every GPS point reads as clutter.
+		// TRACK vertices carry no halo — breadcrumbs, not editing handles; a white ring on every GPS point would read as clutter.
 		paint: {
 			"circle-radius": ["case", ["==", ["get", "_isTrack"], true], 0, 7],
 			"circle-color": "#ffffff",
@@ -475,11 +350,7 @@ export function setupDrawSourcesAndLayers(
 		type: "circle",
 		source: COMPLETED_SOURCE_ID,
 		filter: VERTEX_HANDLES_HIDDEN,
-		// A vertex dot matches its parent shape: orange for polygon
-		// corners, brown `accent` for line vertices. `_parentType` is
-		// stamped on each synthesized vertex Point by `buildCompletedFC`.
-		// Track breadcrumbs go slightly bigger (they have no halo) so the
-		// path keeps its texture.
+		// Vertex dot colour matches its parent shape via _parentType (stamped by buildCompletedFC); track breadcrumbs are bigger (no halo) for texture.
 		paint: {
 			"circle-radius": ["case", ["==", ["get", "_isTrack"], true], 5.5, 4],
 			"circle-color": [
@@ -493,10 +364,7 @@ export function setupDrawSourcesAndLayers(
 		},
 	});
 
-	// Boundary pins — clustered polygon centroids for far-out zooms (see the
-	// constants block up top). Data is pushed by the consumer alongside
-	// completed-features via buildCentroidFC. Painted in the polygon rust so
-	// they read apart from the gold pin-cluster bubbles.
+	// Boundary pins: clustered polygon centroids for far-out zooms — consumer must push data via buildCentroidFC alongside completed-features.
 	map.addSource(CENTROID_SOURCE_ID, {
 		type: "geojson",
 		data: empty,
@@ -525,8 +393,7 @@ export function setupDrawSourcesAndLayers(
 		maxzoom: BOUNDARY_PIN_MAXZOOM,
 		layout: {
 			"text-field": ["get", "point_count_abbreviated"],
-			// Font comes from the LIVE style — see glyphStack.ts. A literal stack
-			// here 404s forever on whichever map it wasn't written for.
+			// Font must come from the LIVE style via glyphStack(map) — a literal stack here 404s forever on whichever map it wasn't written for.
 			"text-font": glyphStack(map),
 			"text-size": 13,
 			"text-allow-overlap": true,
@@ -546,9 +413,7 @@ export function setupDrawSourcesAndLayers(
 			"circle-stroke-color": "#ffffff",
 		},
 	});
-	// The solo pin keeps its polygon's NAME underneath, so a lone far-out
-	// pin still says what it is. Never hectares — those live in the AREA
-	// popover on tap, not on the map.
+	// Solo pin shows its polygon's NAME underneath — never hectares (those live in the AREA popover on tap, not on the map).
 	map.addLayer({
 		id: CENTROID_PIN_LABEL_LAYER,
 		type: "symbol",
@@ -557,14 +422,7 @@ export function setupDrawSourcesAndLayers(
 		maxzoom: BOUNDARY_PIN_MAXZOOM,
 		layout: {
 			"text-field": ["get", "_nameLabel"],
-			// ⛔ NEVER HARDCODE A text-font STACK. See glyphStack.ts.
-			//
-			// The two maps have DISJOINT glyph endpoints: the hosted style has
-			// DIN/Arial and no Noto; the offline base has Noto and nothing else.
-			// So there is no literal array that works on both — a DIN stack 404s
-			// forever offline, and adding Noto as a fallback 404s forever online
-			// (both were observed). Mapbox re-requests a missing range per tile,
-			// so either mistake floods the console and kills the label.
+			// ⛔ NEVER hardcode a text-font stack (see glyphStack.ts) — hosted style has DIN/Arial with no Noto, offline base has only Noto; a literal array 404s forever on one or the other and floods the console.
 			"text-font": glyphStack(map),
 			"text-size": 11,
 			"text-anchor": "top",
@@ -578,17 +436,7 @@ export function setupDrawSourcesAndLayers(
 	});
 }
 
-/**
- * Reveal the draggable vertex handles for exactly one completed feature.
- *
- * Handles are an *editing* affordance — without this gate, a map of 50
- * polygons renders as a field of white-haloed orbs. They show only for the
- * feature the user has selected (`idx` = its `_idx` in the completed-features
- * source); pass `null` to hide every handle once editing is finished.
- *
- * Edit-state ownership stays in the consuming route — this helper only maps
- * an index onto the two GL layer filters.
- */
+// idx = the feature's _idx; pass null to hide every handle. Edit-state ownership stays in the consumer — this only maps an index onto the two GL layer filters.
 export function setVertexHandlesForFeature(
 	map: MapboxMap,
 	idx: number | null,
@@ -606,9 +454,7 @@ export function setVertexHandlesForFeature(
 	}
 }
 
-/** Geo bbox of a (Multi)Polygon's outer ring(s). Exported for
- *  areaLabels.ts, which anchors each name label at the bbox centre — the
- *  same point buildCentroidFC uses for the boundary pins. */
+// Geo bbox of a (Multi)Polygon's outer ring(s) — exported for areaLabels.ts, which anchors labels at the same bbox centre buildCentroidFC uses for boundary pins.
 export function geometryBbox(g: Polygon | MultiPolygon): RingBbox | null {
 	let minX = Infinity;
 	let minY = Infinity;
@@ -627,14 +473,7 @@ export function geometryBbox(g: Polygon | MultiPolygon): RingBbox | null {
 	return [minX, minY, maxX, maxY];
 }
 
-/**
- * Builds the completed-centroids FC — one Point per saved polygon, at the
- * polygon's bbox centre. Feeds the clustered boundary-pin source so a map
- * stays findable when zoomed out past BOUNDARY_PIN_MAXZOOM. Consumers push
- * this alongside buildCompletedFC from the SAME feature array, so the pins
- * obey the same visibility toggles as the shapes they stand in for. `_bbox`
- * rides along so a pin tap can frame its polygon.
- */
+// Consumers must push this alongside buildCompletedFC from the SAME feature array, so pins obey the same visibility toggles as their shapes; _bbox rides along so a pin tap can frame its polygon.
 export function buildCentroidFC(features: Feature[]): FeatureCollection {
 	const out: Feature[] = [];
 	for (const feat of features) {
@@ -642,11 +481,7 @@ export function buildCentroidFC(features: Feature[]): FeatureCollection {
 		if (g?.type !== "Polygon" && g?.type !== "MultiPolygon") continue;
 		const bbox = geometryBbox(g);
 		if (!bbox) continue;
-		// The solo-pin caption is the area's SHORT HANDLE (Rule 1 — one line,
-		// never the raw paragraph; hectares stay in the AREA popover).
-		// Unnamed polygons get a bare pin — the label layer's
-		// `has _nameLabel` filter skips them. A handle that shows less than
-		// the full name wears a "…" — truncation is visible truth.
+		// Solo-pin caption is the SHORT HANDLE, never the raw paragraph; unnamed polygons get a bare pin (has _nameLabel filter skips them); truncated names get a trailing "…".
 		const fullName = String(feat.properties?.name ?? "").trim();
 		const rawHandle =
 			String(feat.properties?.displayName ?? "").trim() ||
@@ -668,8 +503,7 @@ export function buildCentroidFC(features: Feature[]): FeatureCollection {
 	return { type: "FeatureCollection", features: out };
 }
 
-/** `_bbox` comes back JSON-stringified from queryRenderedFeatures (GL
- *  serializes non-scalar properties) — parse + finite-check it. */
+// _bbox comes back JSON-stringified from queryRenderedFeatures (GL serializes non-scalar properties) — parse + finite-check it.
 function parseBbox(raw: unknown): RingBbox | null {
 	let arr: unknown = raw;
 	if (typeof raw === "string") {
@@ -686,12 +520,7 @@ function parseBbox(raw: unknown): RingBbox | null {
 		: null;
 }
 
-/**
- * True when a screen point hits a boundary pin or cluster bubble — an
- * EXCLUSIVE tap target (same contract as the grid dots): the tap belongs to
- * the pin's own layer handler, and the generic map-click hit-test must not
- * ALSO select the sub-pixel polygon underneath.
- */
+// EXCLUSIVE tap target (same contract as grid dots) — a hit here must NOT also select the sub-pixel polygon underneath via the generic click hit-test.
 export function boundaryPinAt(
 	map: MapboxMap,
 	point: { x: number; y: number },
@@ -705,15 +534,7 @@ export function boundaryPinAt(
 
 const boundaryPinWired = new WeakSet<MapboxMap>();
 
-/**
- * Tap navigation for the boundary pins: a cluster bubble eases to the zoom
- * where it splits (stock behaviour, matching the gold pin clusters), a solo
- * pin frames its polygon. Delegated listeners survive setStyle, so this wires
- * once per map instance no matter how often setup re-runs.
- *
- * `isNavigationAllowed` lets the consumer veto navigation while a draw tool
- * is armed — a tap meant to place a vertex must never also fly the camera.
- */
+// Wires listeners once per map instance (survives setStyle, guarded so repeat setup is a no-op); isNavigationAllowed lets a draw tool veto navigation so a vertex tap never also flies the camera.
 export function wireBoundaryPinNavigation(
 	map: MapboxMap,
 	isNavigationAllowed: () => boolean = () => true,
@@ -812,23 +633,15 @@ export function buildProvisionalPolygonFC(
 	return { type: "FeatureCollection", features };
 }
 
-/**
- * Builds the completed-features FC for the GL source. Pins (Point geometries)
- * are intentionally EXCLUDED — they're rendered as DOM markers
- * (mapboxgl.Marker) by the consumer, not as a symbol layer. Polygons, lines,
- * and the synthesized vertex Points stay here.
- */
+// Pins (Point geometries) are intentionally EXCLUDED — rendered as DOM markers by the consumer, not a symbol layer; polygons, lines, and synthesized vertex Points stay here.
 export function buildCompletedFC(features: Feature[]): FeatureCollection {
 	const out: Feature[] = [];
-	// Display-only: stamped onto the FC copies, never onto the stored
-	// features, so a polygon's colour re-derives from live geometry on
-	// every rebuild (draw, drag, delete).
+	// Display-only — stamped onto FC copies, never onto stored features, so colour re-derives from live geometry on every rebuild (draw, drag, delete).
 	const overlapColors = assignOverlapColors(features);
 	for (let i = 0; i < features.length; i++) {
 		const feat = features[i];
 		if (feat.geometry?.type === "Point") continue; // pins → DOM markers
-		// Area-name labels are DOM markers too (areaLabels.ts) — nothing
-		// label-related rides on the FC.
+		// Area-name labels are DOM markers too (areaLabels.ts) — nothing label-related rides on the FC.
 		const overlapColor = overlapColors.get(i);
 		out.push({
 			...feat,
@@ -847,8 +660,7 @@ export function buildCompletedFC(features: Feature[]): FeatureCollection {
 
 		if (feat.geometry?.type === "Polygon") {
 			const ring = (feat.geometry as Polygon).coordinates[0];
-			// Skip the closing-duplicate vertex (last === first) so we
-			// don't emit two overlapping draggable points at vertex 0.
+			// Skip the closing-duplicate vertex (last === first) so we don't emit two overlapping draggable points at vertex 0.
 			const last = ring.length - 1;
 			const closes =
 				ring.length > 1 &&
@@ -873,10 +685,7 @@ export function buildCompletedFC(features: Feature[]): FeatureCollection {
 			}
 		} else if (feat.geometry?.type === "LineString") {
 			const coords = (feat.geometry as LineString).coordinates;
-			// A recorded TRACK's vertices are breadcrumbs, not editing
-			// handles — they render as plain accent balls (no white halo,
-			// slightly bigger) purely for texture. Stamped here so the
-			// vertex layers can style them apart from drawn lines.
+			// A recorded TRACK's vertices are breadcrumbs, not editing handles — plain accent balls (no halo) for texture; stamped so vertex layers can style them apart from drawn lines.
 			const isTrack = feat.properties?.featureType === "track";
 			for (let v = 0; v < coords.length; v++) {
 				const coord = coords[v];
@@ -905,10 +714,7 @@ export interface PixelBbox {
 	maxY: number;
 }
 
-/**
- * Projects a set of lng/lat pairs to screen pixels and returns the bbox.
- * Returns null if the input is empty.
- */
+// Returns null if coords is empty.
 export function projectLnglatBbox(
 	map: MapboxMap,
 	coords: ReadonlyArray<Lnglat | number[]>,
@@ -945,18 +751,7 @@ export function projectFeatureBbox(
 	return projectLnglatBbox(map, coords);
 }
 
-/**
- * Hit tests the completed-features layers (polygons + lines + their
- * vertices) at a screen point. Pins are NOT in this set — they're DOM
- * markers and own their own click events.
- * Returns the `_idx` of the topmost feature hit, or null.
- *
- * `tolerancePx` widens the hit query into a square around the point.
- * Defaults to 12 px — lines render thin (~3 px) and are unhittable at
- * single-pixel tap precision on a phone; the wider window catches them
- * without changing polygon behavior (a tap already inside the fill still
- * resolves to that fill, since fill renders below stroke).
- */
+// Pins are NOT in this set (DOM markers own their own clicks); tolerancePx defaults to 12px because thin (~3px) lines are unhittable at single-tap precision on a phone.
 export function hitTestCompleted(
 	map: MapboxMap,
 	point: { x: number; y: number },
@@ -979,10 +774,7 @@ export function hitTestCompleted(
 	return typeof idx === "number" ? idx : null;
 }
 
-/**
- * Resets the three in-progress drawing sources to empty FCs. Doesn't touch
- * the completed-features source.
- */
+// Resets the three in-progress drawing sources to empty FCs — does not touch completed-features.
 export function clearInProgressSources(map: MapboxMap): void {
 	const empty = emptyFC();
 	for (const id of DRAW_SOURCE_IDS) {
@@ -995,15 +787,7 @@ export function clearInProgressSources(map: MapboxMap): void {
 	}
 }
 
-/**
- * Build a new feature from the currently drawn vertices.
- *
- * `properties.name` is left empty on purpose — the proprietary mobile
- * layer (`ReTreever/src/lib/mobile/stores/mapStore.svelte.ts`) supplies
- * the canonical default via `defaultFeatureName` per
- * `ReTreever/src/lib/mobile/docs/NAMING_CONVENTIONS.md`. Don't fill it
- * here; rapper is naming-convention-agnostic.
- */
+// properties.name is left empty on purpose — the proprietary mobile layer supplies the canonical default name; don't fill it here, rapper is naming-convention-agnostic.
 export function finalizeFeature(
 	intent: Exclude<DrawIntent, null>,
 	vertices: Lnglat[],
