@@ -1,17 +1,4 @@
-// newId — UUIDv4 generator built directly on `crypto.getRandomValues`.
-//
-// rapper ships UI shells that need stable random keys for feature ids
-// without depending on `crypto.randomUUID` — which is only defined in
-// SECURE contexts (HTTPS, `http://localhost`, `capacitor://localhost`).
-// Insecure contexts (Capacitor live-reload on a LAN IP) leave it
-// undefined, and the WKWebView in iOS 26 silently rejects assignment to
-// the readonly `Crypto` interface, so a prototype polyfill can't be
-// relied on. `crypto.getRandomValues` IS defined in every context, so
-// this helper builds the UUID itself.
-//
-// The proprietary mobile app uses its own copy at
-// `src/lib/mobile/utils/newId.ts` — kept in sync conceptually but not
-// imported across the open-core split.
+// UUIDv4 built on crypto.getRandomValues — crypto.randomUUID is undefined in insecure contexts (Capacitor live-reload on a LAN IP), and WKWebView on iOS 26 rejects a polyfill assignment to the readonly Crypto interface, so getRandomValues is used directly instead.
 
 const HEX = "0123456789abcdef";
 

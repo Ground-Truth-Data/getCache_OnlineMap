@@ -1,22 +1,3 @@
-// Map overlay — two render paths. Both share one id NAMING SCHEME so opacity /
-// removal / z-order plumbing doesn't need to know which path is active; each
-// mounted overlay gets its own suffixed ids (see `slot`) so a map can show
-// MANY overlays at once. Omitting the slot yields the original bare ids.
-//
-//   PDF (single-WebP):    ImageSource + 4 corners. The production path for
-//     PDF imports — one WebP per overlay, mounted with axis-aligned corners
-//     derived from the [w,s,e,n] bounds the server returns. See
-//     MAP_IMPORTS_UNIFIED.md §3.1.
-//
-//   KML/KMZ (vector tile pyramid — Phase 5): VectorSource pointing at a local
-//     file:// .pbf tile tree in mobMapStorage/{mapKey}/vtiles/{z}/{x}/{y}.pbf.
-//     Lets multi-thousand-feature KMLs render without flooding the synced
-//     TinyBase DB ([[big-map-storage-split]]).
-//
-// (A raster tile-pyramid PDF path lived here briefly — Phase 4, 2026-05-24 —
-// and was reverted the same day. The single-WebP path is what shipped before
-// and what ships now.)
-
 import type { ImageSource, Map as MapboxMap } from "mapbox-gl";
 import type { Coord } from "./coord";
 import { glyphStack } from "./glyphStack";
@@ -32,20 +13,11 @@ const RASTER_LAYER_ID = "map-overlay-raster";
 const LABELS_SOURCE_ID = "map-overlay-labels";
 const LABELS_LAYER_ID = "map-overlay-labels-text";
 
-// Vector tile pyramid (Phase 5) — distinct source + layer ids from the
-// raster path. Vector tiles can carry MIXED geometry types (fills, lines,
-// circles) so we always lay down three layers; unused layer types render
-// nothing because the source-layer + filter pull only matching features.
-// All three layers are stacked at the same z-position via pickBeforeId.
 const VECTOR_SOURCE_ID = "map-overlay-vector";
 const VECTOR_FILL_LAYER_ID = "map-overlay-vector-fill";
 const VECTOR_LINE_LAYER_ID = "map-overlay-vector-line";
 const VECTOR_CIRCLE_LAYER_ID = "map-overlay-vector-circle";
-// tippecanoe's default source-layer name when emitting a directory of .pbf
-// tiles. The bake pipeline MUST keep this in sync; if it changes, the
-// renderer mounts the layers against the wrong name and nothing draws.
-// Document loudly so a future bake-pipeline tweak (Phase 5 server work)
-// doesn't silently break the client.
+// tippecanoe's default source-layer name — the bake pipeline MUST keep this in sync, or the renderer mounts against the wrong name and nothing draws.
 const VECTOR_SOURCE_LAYER = "features";
 
 export interface OverlaySpec {
@@ -53,18 +25,11 @@ export interface OverlaySpec {
 	key: string;
 	/** Image corners in Mapbox order: [topLeft, topRight, bottomRight, bottomLeft]. */
 	corners: readonly [Coord, Coord, Coord, Coord];
-	/** Distinguishes THIS overlay's source/layer ids from every other overlay
-	 *  mounted on the same map. Omit for the solo overlay (the ids stay the
-	 *  bare constants, so existing callers and any style/plumbing that
-	 *  hardcodes `map-overlay-raster` keep working unchanged). */
+	/** Distinguishes this overlay's ids from other overlays on the map; omit for the solo overlay (ids stay the bare constants). */
 	slot?: string;
 }
 
-/** A map may carry MANY overlays at once — two PDF sheets covering adjacent
- *  ground both belong to the map you're standing on. Every source/layer id is
- *  therefore suffixed per overlay; without that they'd collide on one Mapbox
- *  source and only the last-added would draw. An omitted slot yields the bare
- *  constant, preserving the original single-overlay ids. */
+/** Every source/layer id is suffixed per overlay — without that, multiple overlays collide on one Mapbox source and only the last-added draws. Omitted slot yields the bare constant. */
 function slotSuffix(slot?: string): string {
 	return slot ? `-${slot}` : "";
 }
@@ -77,26 +42,10 @@ const labelsSourceId = (slot?: string) =>
 const labelsLayerId = (slot?: string) =>
 	`${LABELS_LAYER_ID}${slotSuffix(slot)}`;
 
-// One blob handle PER MOUNTED OVERLAY, keyed by slot — held so removal can
-// revoke the object URL on web (no-op on native). A single module-level
-// handle would leak every overlay but the last.
+// One blob handle per mounted overlay (keyed by slot) so removal can revoke its object URL on web — a single module-level handle would leak every overlay but the last.
 const activeHandles = new Map<string, OverlayHandle>();
 
-// Where to insert the overlay so it sits below the right things on EVERY
-// basemap style.
-//
-// Priority order:
-//  1. Below the draw layers if they exist (so user draws on top of the
-//     overlay, not under it).
-//  2. Otherwise below the first symbol layer (labels are symbol layers in
-//     Mapbox styles — putting the overlay below them keeps street/place
-//     names readable on top of the imagery). This is what fixes Street
-//     View: on that style our `draw-edges-halo` doesn't exist yet, so
-//     before the fallback we ended up at the TOP of the stack —
-//     ABOVE the satellite/street basemap labels, so the overlay
-//     covered them. Now we land below labels regardless of style.
-//  3. Last resort: top of stack (undefined). Shouldn't happen with
-//     standard Mapbox styles.
+// Insert point for the overlay: below draw layers if present, else below the first symbol layer (keeps basemap labels on top), else top of stack.
 function pickBeforeId(map: MapboxMap): string | undefined {
 	const drawCandidates = ["draw-edges-halo", "completed-fill"];
 	for (const id of drawCandidates) {
@@ -111,9 +60,7 @@ export async function addMapOverlay(
 	map: MapboxMap,
 	spec: OverlaySpec,
 ): Promise<void> {
-	// Tear down only THIS slot — mounting a second overlay must not unmount
-	// the first. (Before per-slot ids this was an unconditional
-	// removeMapOverlay(map), which is why a map could only ever show one PDF.)
+	// Tear down only this slot — mounting a second overlay must not unmount the first.
 	removeMapOverlay(map, spec.slot);
 
 	const handle = await getMapUrl(spec.key);
@@ -135,23 +82,16 @@ export async function addMapOverlay(
 			id: rasterLayerId(spec.slot),
 			type: "raster",
 			source: imageSourceId(spec.slot),
-			// 0.5 default — a freshly added overlay sits half-transparent
-			// so the basemap underneath stays readable. Kept in sync with
-			// the overlayOpacity store's default; tunable live via
-			// setMapOverlayOpacity() / the opacity slider.
+			// 0.5 default — must stay in sync with the overlayOpacity store's default; tune live via setMapOverlayOpacity().
 			paint: { "raster-opacity": 0.5 },
 		},
 		pickBeforeId(map),
 	);
 
-	// Render and framing are separate concerns. This function deliberately
-	// does NOT move the camera — the importer / route is responsible for
-	// framing a freshly imported overlay.
+	// Deliberately does NOT move the camera — the importer/route frames a freshly imported overlay.
 }
 
-/** One crisp label to draw over the raster. Mirrors the proprietary
- *  OverlayLabel shape (mapStore/pdfTextLabels) structurally — rapper stays
- *  UI-only, so it declares its own type instead of importing it. */
+/** One label to draw over the raster; mirrors the proprietary OverlayLabel shape structurally since rapper stays UI-only and doesn't import it. */
 export interface OverlayLabelSpec {
 	/** Text, e.g. "2427". */
 	t: string;
@@ -163,17 +103,6 @@ export interface OverlayLabelSpec {
 	r: number;
 }
 
-/**
- * Mount the overlay's crisp text labels as a symbol layer ABOVE the raster.
- *
- * The label text was extracted from the PDF's own text objects, so instead of
- * zooming into pixel soup the user reads real font at every zoom. Sizing is
- * GROUND-anchored: each label carries its height in metres, converted to a
- * screen size that doubles per zoom level (exponential base 2) — the text
- * scales exactly like the raster underneath, welded to the map, never a
- * floating HUD. The paper-coloured halo is the "plate" that masks the blurry
- * raster original beneath each label.
- */
 export function addMapOverlayLabels(
 	map: MapboxMap,
 	labels: readonly OverlayLabelSpec[],
@@ -182,16 +111,10 @@ export function addMapOverlayLabels(
 	if (!map || !(map as unknown as { style?: unknown }).style) return;
 	removeMapOverlayLabels(map, slot);
 	if (!labels.length) return;
-	// Screen pixels a label's height works out to at zoom 14 — the anchor for
-	// the exponential zoom curve below. m/px at z14 = 78271.517·cos(lat)/2^14.
+	// Screen px a label's height works out to at zoom 14 (m/px = 78271.517·cos(lat)/2^14) — anchor for the curve below.
 	const px14 = (l: OverlayLabelSpec) =>
 		(l.m * 16384) / (78271.517 * Math.cos((l.p[1] * Math.PI) / 180));
-	// ONE power law for the whole layer, anchored on the MEDIAN label size.
-	// Per-feature sizing (["get","px14"] inside the zoom interpolate) is the
-	// obvious spelling and it fails SILENTLY — the layer mounts, features
-	// exist, nothing draws (verified live: constant size renders instantly).
-	// Map sheets use near-uniform label sizes, so a single per-layer curve
-	// loses almost nothing.
+	// ⚠️ Per-feature sizing (["get","px14"] in the interpolate) fails SILENTLY — layer mounts, nothing draws. Use one per-layer curve anchored on the median size instead.
 	const sizes = labels.map(px14).sort((a, b) => a - b);
 	const med = sizes[Math.floor(sizes.length / 2)];
 	const fc: GeoJSON.FeatureCollection = {
@@ -210,14 +133,9 @@ export function addMapOverlayLabels(
 			source: labelsSourceId(slot),
 			layout: {
 				"text-field": ["get", "t"],
-				// ⛔ NEVER a literal stack — the two maps' glyph endpoints are
-			// DISJOINT, so any fixed array 404s forever on one of them (once per
-			// tile, flooding the console and killing the label). Ask the live
-			// style instead; see glyphStack.ts.
+			// ⛔ NEVER a literal font stack — glyph endpoints are DISJOINT, so a fixed array 404s forever on one map; ask the live style (see glyphStack.ts).
 			"text-font": glyphStack(map),
-				// size = med * 2^(zoom-14): exponential base-2 interpolation
-				// between matching endpoints IS that power law — text doubles
-				// per zoom step, exactly like the ground (mounted, not HUD).
+				// size = med * 2^(zoom-14) — text doubles per zoom step, exactly like the ground beneath it.
 				"text-size": [
 					"interpolate",
 					["exponential", 2],
@@ -230,8 +148,7 @@ export function addMapOverlayLabels(
 				"text-rotate": ["get", "rot"],
 				"text-rotation-alignment": "map",
 				"text-pitch-alignment": "map",
-				// Positions are exact (from the PDF) — never let Mapbox's
-				// collision pass hide one label because another is near.
+				// Positions are exact (from the PDF) — allow-overlap/ignore-placement stay true so Mapbox's collision pass never hides a label.
 				"text-allow-overlap": true,
 				"text-ignore-placement": true,
 				"text-padding": 0,
@@ -257,21 +174,12 @@ export function removeMapOverlayLabels(map: MapboxMap, slot?: string): void {
 	}
 }
 
-/** Unmount overlays. Pass a `slot` to remove exactly that one; omit it to
- *  remove EVERY mounted overlay (map switch, style reload, teardown). The
- *  all-slots default preserves the original call-sites' meaning — they used
- *  to mean "remove the overlay" when only one could exist. */
+/** Unmount overlays. Pass a slot to remove just that one; omit it to remove every mounted overlay (map switch, style reload, teardown). */
 export function removeMapOverlay(map: MapboxMap, slot?: string): void {
-	// Which slots this call is responsible for. An explicit slot narrows to
-	// one; otherwise every slot we currently hold a handle for, plus "" so a
-	// solo overlay mounted before any handle was recorded still gets swept.
+	// Slots this call handles: an explicit slot narrows to one; otherwise every slot with a handle, plus "" so a solo overlay recorded before any handle still gets swept.
 	const slots =
 		slot !== undefined ? [slot] : [...new Set([...activeHandles.keys(), ""])];
-	// On slow / low-end devices this can fire before the style has loaded or
-	// after the map was torn down during navigation. In both cases the map's
-	// internal style is undefined and every getLayer/getSource call throws
-	// "Cannot read property 'getOwnLayer' of undefined". Bail, but still drop
-	// our object-URL handles so we don't leak them.
+	// Style can be undefined here (slow device, or map torn down mid-navigation) — getLayer/getSource then throw; bail but still drop the object-URL handles so they don't leak.
 	if (!map || !(map as unknown as { style?: unknown }).style) {
 		for (const s of slots) {
 			const h = activeHandles.get(s);
@@ -291,8 +199,7 @@ export function removeMapOverlay(map: MapboxMap, slot?: string): void {
 			map.removeSource(imageSourceId(s));
 		}
 	}
-	// Vector pyramid teardown: three layers, one source. Order matters —
-	// Mapbox refuses to remove a source while any layer still references it.
+	// Vector pyramid teardown: order matters — Mapbox refuses to remove a source while a layer still references it.
 	for (const id of [
 		VECTOR_FILL_LAYER_ID,
 		VECTOR_LINE_LAYER_ID,
@@ -312,8 +219,7 @@ export function removeMapOverlay(map: MapboxMap, slot?: string): void {
 	}
 }
 
-/** Set raster opacity. With a `slot`, only that overlay changes; without one
- *  the value is applied to EVERY mounted overlay (the global slider). */
+/** Set raster opacity. With a slot, only that overlay changes; without one, every mounted overlay does (the global slider). */
 export function setMapOverlayOpacity(
 	map: MapboxMap,
 	opacity: number,
@@ -329,12 +235,7 @@ export function setMapOverlayOpacity(
 	}
 }
 
-/**
- * Show / hide the mounted overlay WITHOUT unmounting it — flips layout
- * `visibility` on whichever overlay layers exist (raster WebP or the vector
- * pyramid's three). Cheap and reversible, so a toggle never pays the
- * re-decode/re-mount cost of removeMapOverlay + addMapOverlay.
- */
+/** Show/hide the mounted overlay without unmounting it — flips layout visibility, so a toggle never pays the re-decode/re-mount cost of remove+add. */
 export function setMapOverlayVisibility(
 	map: MapboxMap,
 	visible: boolean,
@@ -358,19 +259,7 @@ export function setMapOverlayVisibility(
 	}
 }
 
-/**
- * Swap the image overlay's backing blob (and corners) IN PLACE — gap-free.
- *
- * This is the "render the raw local PDF now, drop in the optimized server WebP
- * when it lands" path. Mapbox `ImageSource.updateImage` keeps the current
- * texture on screen until the new image decodes, so the overlay never blinks
- * out (OFFLINE_PLAN.md law 3 — NO BLINK). Contrast `addMapOverlay`, which
- * removes-then-adds and would flash the basemap through the gap.
- *
- * Returns false if there's no live image source to swap (e.g. the map switched
- * away, or the overlay was a vector-tile pyramid) — caller does a full
- * `addMapOverlay` instead.
- */
+/** Swap the overlay's backing blob in place (gap-free, via ImageSource.updateImage) — unlike addMapOverlay's remove+add, this never flashes the basemap through a gap. Returns false if there's no live image source to swap. */
 export async function swapMapOverlayImage(
 	map: MapboxMap,
 	spec: OverlaySpec,
@@ -389,36 +278,16 @@ export async function swapMapOverlayImage(
 		],
 	});
 	activeHandles.set(spec.slot ?? "", handle);
-	// The old texture is already in the GPU and Mapbox is now fetching the new
-	// url, so the old objectURL is safe to revoke — no gap on screen.
+	// Old texture is already in the GPU and Mapbox is now fetching the new url, so the old objectURL is safe to revoke — no gap on screen.
 	if (prev) prev.revoke();
 	return true;
 }
-
-// ── Vector-tile-pyramid overlay (Phase 5) ───────────────────────────────────
 
 export interface VectorTileOverlaySpec {
 	/** mapKey — used to locate the on-disk vtiles tree. */
 	mapKey: string;
 }
 
-/** Render a vector-tile-pyramid overlay by mounting a Mapbox `VectorSource`
- * pointed at the on-disk `.pbf` tree. Three layers are added — fill, line,
- * circle — because a vector tile bake from a foreign KML can mix polygons,
- * lines and points in the same source-layer. Unused layer types render
- * nothing (the source-layer simply has no matching features).
- *
- * Replaces any existing overlay (raster image, raster tiles, or a previous
- * vector pyramid) on this map. Returns `true` on success, `false` if no
- * vector tile package is on disk for this map — caller surfaces
- * `ImportErrors.TILES_NOT_ON_DEVICE` (per MAP_IMPORTS_UNIFIED.md §11).
- *
- * Paint expressions are default-only for v1 — reading per-feature
- * `featureSource:"kmz"`) is a later step. Today the paint reads
- * simplestyle-spec properties directly off the vector-tile features when
- * present (`["get", "fill"]` etc.), so a tippecanoe bake that preserves
- * those properties via `-y fill -y stroke ...` (see §3.2 of
- * MAP_IMPORTS_UNIFIED.md) will already render with KML colours. */
 export async function addMapVectorTileOverlay(
 	map: MapboxMap,
 	spec: VectorTileOverlaySpec,
@@ -445,9 +314,7 @@ export async function addMapVectorTileOverlay(
 
 	const beforeId = pickBeforeId(map);
 
-	// Polygons. `fill-color`/`fill-opacity` read simplestyle-spec props
-	// when present (KML preserved via tippecanoe -y), fall back to a
-	// neutral terracotta-hint tint so unstyled polygons are still visible.
+	// Polygons — fill-color/fill-opacity read simplestyle-spec props (via tippecanoe -y) or fall back to a neutral terracotta tint.
 	map.addLayer(
 		{
 			id: VECTOR_FILL_LAYER_ID,
@@ -468,9 +335,7 @@ export async function addMapVectorTileOverlay(
 		beforeId,
 	);
 
-	// Lines (LineString) AND polygon outlines (Mapbox renders polygon
-	// outlines via fill-outline-color above, but explicit line layer is
-	// still needed for true LineString features).
+	// Lines: covers true LineString features — polygon outlines already come from fill-outline-color above.
 	map.addLayer(
 		{
 			id: VECTOR_LINE_LAYER_ID,
@@ -491,10 +356,7 @@ export async function addMapVectorTileOverlay(
 		beforeId,
 	);
 
-	// Points. Rendered as circles for v1 — custom KMZ icon support
-	// (`addImage` + a symbol layer reading `icon-image`) is Phase 5
-	// styling work; native pin DOM-markers are a separate, parallel
-	// rendering path (see MapDrawControls.svelte pinMarkers).
+	// Points — rendered as circles for v1; custom KMZ icons are later Phase 5 work.
 	map.addLayer(
 		{
 			id: VECTOR_CIRCLE_LAYER_ID,

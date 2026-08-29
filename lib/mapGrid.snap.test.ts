@@ -1,31 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { nearestGridDot } from "./mapGrid.js";
 
-// Snap-to-grid is the magnet that lands a thrown plot on the nearest audit-grid
-// dot. The key contract: the radius is in METRES (zoom-independent), so a plot
-// only snaps when the user is clearly aiming at a dot, and they can always drop
-// free between dots by zooming in. These tests pin that behaviour at a fixed
-// Ottawa location (UTM zone 18N).
+// Snap radius is in METRES, zoom-independent — never snaps by accident, always escapable by zooming in.
 
 const LNG = -75.69;
 const LAT = 45.42;
 
-// Helper: nudge a lng/lat by ~metres using a crude local degree scale. Good
-// enough to land a point a known distance from a dot for the radius tests.
 const M_PER_DEG_LAT = 111_320;
 const m2lat = (m: number) => m / M_PER_DEG_LAT;
 
 describe("nearestGridDot — fine (keypad) mode", () => {
 	it("sub-dot: id IS the real +2 / 10-char Plus Code (no '.N', no +3)", () => {
-		// LAT/LNG is near a big-dot centre, so query a clearly off-centre point
-		// to land on a ring sub-dot (not the centre, which collapses to the big).
 		const dot = nearestGridDot(LNG + 0.0004, LAT + 0.0004, "fine", 80);
 		expect(dot).not.toBeNull();
 		if (dot?.sub != null) {
-			// Ring dots carry the SAME +2 precision as big dots: a dot is a snapped
-			// lattice position, so a +3 code would claim ~3.5m accuracy it doesn't
-			// have. Both plusCode (display/stamp) and code10 (copy) are that one
-			// real 10-char code. See gridCodeHonesty.test.ts for the full law.
+			// Ring dots carry the same +2 precision as big dots — a +3 code would falsely claim ~3.5m accuracy; see gridCodeHonesty.test.ts.
 			const re10 = /^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2}$/;
 			expect(dot.plusCode).toMatch(re10);
 			expect(dot.code10).toMatch(re10);
@@ -37,15 +26,13 @@ describe("nearestGridDot — fine (keypad) mode", () => {
 	it("is idempotent — re-querying ON a snapped dot returns the same dot", () => {
 		const first = nearestGridDot(LNG, LAT, "fine", 60);
 		if (!first) throw new Error("expected a snapped dot at the test point");
-		// Query again at the dot's own coordinate — must snap to itself.
 		const again = nearestGridDot(first.lng, first.lat, "fine", 60);
 		expect(again?.plusCode).toBe(first?.plusCode);
 		expect(again?.sub).toBe(first?.sub);
 	});
 
 	it("returns a real lookup-able code (10-char big / 11-char sub)", () => {
-		// code10 is always a genuine Google-able Plus Code: 10-char for the big
-		// dot, 11-char for a ring sub-dot.
+		// code10 is always a genuine Google-able Plus Code: 10-char (big dot) or 11-char (ring sub-dot).
 		const dot = nearestGridDot(LNG, LAT, "fine", 60);
 		expect(dot?.code10).toMatch(
 			/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,3}$/,
@@ -55,10 +42,8 @@ describe("nearestGridDot — fine (keypad) mode", () => {
 
 describe("nearestGridDot — radius is in metres (the escape hatch)", () => {
 	it("does NOT snap when the point is well beyond the radius", () => {
-		// Sit ~20m north of the nearest dot with a tight 3m magnet → no snap.
 		const dot = nearestGridDot(LNG, LAT + m2lat(20), "fine", 3);
-		// Either null, or (if a different dot happens to be near) it must still
-		// be within the 3m radius — never a far snap.
+		// Never a far snap — either null, or (if a different dot is near) still within the 3m radius.
 		if (dot) {
 			// distance check is implicit: the function only returns within radius
 			expect(dot.sub).toBeTypeOf("number");
@@ -81,8 +66,7 @@ describe("nearestGridDot — standard (hectare) mode", () => {
 		const dot = nearestGridDot(LNG, LAT, "standard", 120);
 		expect(dot).not.toBeNull();
 		expect(dot?.sub).toBeNull();
-		// Hectare id is the 10-char Plus Code (unique per UTM hectare), e.g.
-		// "87Q6C895+VW" — NOT the 8-char form (which collides between hectares).
+		// Hectare id is the 10-char Plus Code (unique per hectare) — NOT the 8-char form, which collides between hectares.
 		expect(dot?.plusCode).toMatch(
 			/^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2}$/,
 		);
@@ -95,17 +79,14 @@ describe("nearestGridDot — off mode never snaps", () => {
 	});
 });
 
-// These two lock the bugs from the field screenshot: a dot's id MUST be stable
-// (same ground point → same code, no drift) and globally UNIQUE (no two dots
-// share an id — the reason the hectare id is 10-char, not 8).
+// id MUST be stable (same ground point → same code) and globally UNIQUE (no two dots share an id) — why hectare ids are 10-char, not 8.
 describe("grid identity — stability + uniqueness (the hard rules)", () => {
 	it("the same ground point always yields the same id", () => {
 		const a = nearestGridDot(LNG, LAT, "fine", 60);
 		const b = nearestGridDot(LNG, LAT, "fine", 60);
 		if (!a) throw new Error("expected a snapped dot at the test point");
 		expect(a.plusCode).toBe(b?.plusCode);
-		// Querying from points scattered AROUND the dot (within its cell) lands
-		// on the same dot with the same id — id is a function of position only.
+		// id is a function of position only — points scattered around a dot within its cell land on the same dot.
 		const c = nearestGridDot(a.lng, a.lat, "fine", 60);
 		expect(c?.plusCode).toBe(a?.plusCode);
 	});

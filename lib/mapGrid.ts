@@ -712,9 +712,7 @@ export function updateGrid(map: MapboxMap, mode: GridMode): GridUpdateResult {
         for (let m = colLo; m <= colHi; m++) {
             const lng = cellCentre(LNG_ORIGIN, m * cellsLng);
 
-            // Big dot = the hectare centre. Its label IS its real Plus Code at
-            // the +2 / 10-char level ("87G3J24G+62") — same display + copy, no
-            // ".5" nickname. (The dot is the centre of a real 10-char cell.)
+            // big dot = the hectare centre; its label IS the real +2/10-char Plus Code — same display + copy, no ".5" nickname
             const bigCode = encodePlusCode(lat, lng, 10);
             hectareFeatures.push({
                 type: "Feature",
@@ -727,8 +725,7 @@ export function updateGrid(map: MapboxMap, mode: GridMode): GridUpdateResult {
             });
 
             if (mode === "fine") {
-                // ONE faint ~100m box per big dot, centred on it (±HALF per
-                // axis) — marks the hectare centre (NOT a lattice between subs).
+                // ONE faint ~100m box per big dot, centred on it — marks the hectare centre, NOT a lattice between subs
                 cellFeatures.push(
                     lngLatLine(lng - halfLng, lat - HALF_LAT, lng + halfLng, lat - HALF_LAT),
                     lngLatLine(lng - halfLng, lat + HALF_LAT, lng + halfLng, lat + HALF_LAT),
@@ -739,17 +736,9 @@ export function updateGrid(map: MapboxMap, mode: GridMode): GridUpdateResult {
         }
     }
 
-    // ── GLOBAL FINE LATTICE ──────────────────────────────────────────────────
-    // Swept in ABSOLUTE space over the whole viewport, not as a ring per hectare,
-    // so the gap between fine dots is constant everywhere (a hectare-relative
-    // ring alternates 2,2,3 cells — a visible seam every ~97m). Hectare dots that
-    // coincide with a lattice point are skipped so no dot is drawn twice.
+    // global fine lattice swept in ABSOLUTE space (not a ring per hectare) so gaps are constant everywhere; hectare dots that coincide with a lattice point are skipped so no dot is drawn twice
     if (mode === "fine") {
-        // Built by pushing into a Set directly rather than `new Set(arr.map(…))`.
-        // The .map() form allocated a THROWAWAY INTERMEDIATE ARRAY of up to
-        // 12,000 strings (MAX_VISIBLE_DOTS) on every moveend/zoomend, purely to
-        // hand it to the Set constructor which then copied it. Same result,
-        // half the garbage, and this runs on every camera settle.
+        // pushes into the Set directly rather than `new Set(arr.map(...))` — the .map() form doubles garbage (throwaway intermediate array) on every camera settle
         const hectareAt = new Set<string>();
         for (const f of hectareFeatures) {
             const c = (f.geometry as Point).coordinates;

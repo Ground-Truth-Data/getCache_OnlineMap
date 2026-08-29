@@ -28,12 +28,10 @@ class StyleToggleControl {
     onAdd(map: mapboxgl.Map): HTMLElement {
         this.map = map;
 
-        // Main container
         this.container = document.createElement("div");
         this.container.className = "mapboxgl-ctrl mapboxgl-ctrl-group";
         this.container.style.position = "relative";
 
-        // Main button (matches Mapbox nav control style)
         const button = document.createElement("button");
         button.type = "button";
         button.className = "mapboxgl-ctrl-icon";
@@ -49,7 +47,6 @@ class StyleToggleControl {
 
         this.container.appendChild(button);
 
-        // Dropdown menu
         this.dropdown = document.createElement("div");
         this.dropdown.style.position = "absolute";
         this.dropdown.style.top = "0";
@@ -111,7 +108,6 @@ class StyleToggleControl {
 
         this.container.appendChild(this.dropdown);
 
-        // Close dropdown when clicking outside
         document.addEventListener("click", this.handleOutsideClick);
 
         return this.container;
@@ -153,7 +149,6 @@ class StyleToggleControl {
     }
 }
 
-// Pre-configured style options
 export const defaultStyleOptions: StyleOption[] = [
     {
         id: "natural",
@@ -172,10 +167,6 @@ export const defaultStyleOptions: StyleOption[] = [
     },
 ];
 
-/**
- * Resolve the style-option id that matches a given Mapbox style URL.
- * Falls back to "satellite" when the URL isn't in the list.
- */
 export function styleIdFromUrl(
     url: string | undefined,
     options: StyleOption[] = defaultStyleOptions,
@@ -184,5 +175,4 @@ export function styleIdFromUrl(
     return options.find((o) => o.styleUrl === url)?.id ?? "natural";
 }
 
-// Legacy export for backward compatibility
 export const CustomStyleControl = StyleToggleControl;

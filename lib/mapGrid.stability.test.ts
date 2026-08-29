@@ -1,31 +1,10 @@
-// GRID STABILITY — the lattice is a property of the EARTH, not the camera.
-//
-// THE LAW: updateGrid draws the same dot at the same ground coordinate with the
-// same code no matter WHERE the viewport sits or where it was before. A Plus
-// Code lattice is fixed by definition; a dot that hops a cell (~14m) between
-// pans is lying about the ground.
-//
-// Field failure (2026-07-31, Rochdell Rd): panning the quality map made the
-// hectare dots jump one cell N-S — the same dot popped up as "…WGH+MM" on one
-// pan and "…WGH+PM" on the next. Two causes, both camera-dependence:
-//   1. A rounding TIE: hectare dots were minted by snapping a block point that
-//      sits EXACTLY on a cell boundary to the "nearest" cell centre — the two
-//      centres are equidistant, and float noise (which varies with the viewport
-//      corner the sweep started from) picked the winner.
-//   2. The E-W step counted cells from the CAMERA's centre latitude, so panning
-//      across a threshold latitude re-spaced the whole grid.
-//
-// These tests drive the REAL updateGrid through a minimal mock map and compare
-// the dots drawn for many different viewports over the same ground.
+// THE LAW: updateGrid draws the same dot at the same ground coordinate with the same code regardless of viewport — a dot that hops a cell (~14m) between pans is lying about the ground.
 
 import { describe, expect, it } from "vitest";
 import type { FeatureCollection, Point } from "geojson";
 import type { Map as MapboxMap } from "mapbox-gl";
 import { nearestGridDot, setupGridSourcesAndLayers, updateGrid } from "./mapGrid.js";
 
-// ── Minimal mock map ─────────────────────────────────────────────────────────
-// Just enough surface for setupGridSourcesAndLayers + updateGrid: bounds, zoom,
-// and geojson sources whose setData captures the FeatureCollection.
 function mockMap(sw: { lat: number; lng: number }, ne: { lat: number; lng: number }) {
 	const sources = new Map<string, { setData: (d: FeatureCollection) => void }>();
 	const captured = new Map<string, FeatureCollection>();
@@ -44,8 +23,6 @@ function mockMap(sw: { lat: number; lng: number }, ne: { lat: number; lng: numbe
 	return { map: map as unknown as MapboxMap, captured };
 }
 
-// Run the real updateGrid for a viewport and return its hectare dots keyed by
-// coordinate, valued by code.
 function drawnHectares(
 	sw: { lat: number; lng: number },
 	ne: { lat: number; lng: number },
@@ -64,8 +41,6 @@ function drawnHectares(
 	return dots;
 }
 
-// Keep only dots inside a ground box (the common area every tested viewport
-// covers) so sweep-edge differences don't count.
 function inBox(
 	dots: Map<string, string>,
 	box: { latLo: number; latHi: number; lngLo: number; lngHi: number },
@@ -81,16 +56,11 @@ function inBox(
 }
 
 describe("the drawn grid is identical for every viewport covering the same ground", () => {
-	// Ground truth patch ~500m square. Two latitudes: the snap tests' Ottawa
-	// anchor and the BC band where the field failure was filmed.
 	const SPOTS = [
 		{ lat: 45.42, lng: -75.69 },
 		{ lat: 50.41, lng: -119.24 },
 	];
-	// Viewport offsets in degrees — deliberately awkward fractions so each run's
-	// float sweep starts somewhere new (that is what flipped the old tie). Every
-	// offset is small enough that the shifted viewport still CONTAINS the
-	// comparison box (viewport half-height 0.012 − box half 0.0022 = 0.0098).
+	// Offsets must stay small enough that the shifted viewport still contains the comparison box (margin: 0.0098°).
 	const OFFSETS = [
 		0, 0.0013177, -0.0027421, 0.0041893, -0.0006219, 0.0072371, -0.0084731,
 		0.0002083, -0.0048999, 0.0061113,
@@ -158,10 +128,7 @@ describe("the drawn grid is identical for every viewport covering the same groun
 });
 
 describe("E-W spacing is a property of the GROUND, not the camera's centre latitude", () => {
-	// Near lat ≈46.84 the ~100m target flips between 10 and 11 cells E-W. The
-	// old code chose per-VIEWPORT (centre latitude), so panning north/south
-	// re-spaced every column. Two viewports whose centres straddle the
-	// threshold must still agree about the band they both cover.
+	// E-W spacing must be a property of the ground, not viewport centre latitude — two viewports whose centres straddle the ~46.84° 10↔11-cell threshold must still agree on the shared band.
 	it("dots in the shared band match across the 10↔11-cell threshold", () => {
 		const band = { latLo: 46.828, latHi: 46.844, lngLo: -119.257, lngHi: -119.235 };
 		const below = drawnHectares(
@@ -181,8 +148,7 @@ describe("E-W spacing is a property of the GROUND, not the camera's centre latit
 });
 
 describe("draw and tap agree — every drawn dot snaps to itself", () => {
-	// nearestGridDot is the tap/magnet path; updateGrid is the draw path. They
-	// must mint the SAME lattice or a tap lands where no dot is drawn.
+	// nearestGridDot (tap path) and updateGrid (draw path) must mint the same lattice, or a tap lands where no dot is drawn.
 	it("every drawn hectare dot round-trips through nearestGridDot", () => {
 		for (const spot of [
 			{ lat: 45.42, lng: -75.69 },

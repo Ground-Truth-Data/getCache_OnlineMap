@@ -52,7 +52,7 @@ function handleTouchEnd(e: TouchEvent) {
 		box-shadow: -0.25rem 0 1rem rgba(0, 0, 0, 0.3);
 	}
 
-	/* Desktop: right side panel — pinned to viewport so it can't clip off-screen */
+	/* Desktop: right-side panel pinned to viewport — unpinning clips it off-screen */
 	@media (min-width: 768px) {
 		.info-panel {
 			right: 1rem;

@@ -1,28 +1,4 @@
-// Waiting-box — the on-map "your PDF is coming" placeholder.
-//
-// A raw PDF map has to round-trip the cloud converter (~20-30s on weak field
-// signal) and there's no on-device preview for the JPX/ArcMap case pdf.js
-// can't draw. A tiny inbox spinner isn't reassuring there — a planter on one
-// bar reads "nothing happened" and gives up, OR (worse) we show a half-drawn
-// map they mistake for the finished thing. Both kill trust.
-//
-// So instead we drop a placeholder AT THE TRUE SPOT the instant they import,
-// using the corners we already read on-device (geoPdfBounds). It is an
-// UNMISTAKABLE "waiting" state, never a partial map:
-//   • a DARK-SLATE fill with a WHITE border on the real footprint (matches
-//     the white-paper map they expect; scales with zoom because it's a
-//     GeoJSON polygon, not a screen-space chip), and
-//   • the cleanCache animation MOUNTED ON the slab via a georeferenced
-//     CanvasSource — it is part of the map image, so it pans/zooms/scales
-//     welded to the slab instead of floating over it as a screen-space
-//     sticker (which visibly slid against the box and read as "thrown at
-//     the page, not mounted").
-// When the server WebP arrives the real overlay mounts and this is torn down.
-// If it never arrives (offline/trickle) the user is left on the honest
-// waiting box, not a broken map.
-//
-// Distinct source/layer ids from mobMapOverlay so the two never collide (the
-// box can be up WHILE the real overlay mounts, for the no-blink handoff).
+// Distinct source/layer ids from mobMapOverlay so the two never collide (box can be up while the real overlay mounts).
 
 import type { Map as MapboxMap } from "mapbox-gl";
 import type { Coord } from "./coord";
@@ -33,27 +9,19 @@ const BOX_LINE_LAYER_ID = "map-waiting-box-line";
 const ANIM_SOURCE_ID = "map-waiting-anim";
 const ANIM_LAYER_ID = "map-waiting-anim-layer";
 
-// The cleanCache animation as INDIVIDUAL FRAMES (same folder the animated
-// .webp is built from — see the animated-webp memory). A CanvasSource needs
-// us to draw each frame ourselves: drawImage() of an *animated* image only
-// ever draws its first frame (per spec), so the single-file .webp can't be
-// used here. Symlinked into ReTreever/static, so the absolute web path
-// resolves in every runtime context.
+// Individual frames (not the single .webp) because drawImage() of an animated image only ever draws its first frame — symlinked into ReTreever/static so the path resolves everywhere.
 const ANIM_FRAME_URL = (n: number) =>
 	`/mobileAssets/animations/cleanCache_anime/${n}_cleanCache_anime.webp`;
 const ANIM_FRAME_COUNT = 11;
 const ANIM_FRAME_MS = 500; // matches the built .webp's per-frame duration
 const ANIM_CANVAS_PX = 500; // native frame resolution
 
-// One waiting box at a time (a single import blocks the map anyway). The
-// frame ticker + canvas are held so hideWaitingBox can stop and drop them.
+// One waiting box at a time; the frame ticker + canvas are held so hideWaitingBox can stop and drop them.
 let animTimer: ReturnType<typeof setInterval> | null = null;
 let animCanvas: HTMLCanvasElement | null = null;
 let animFrames: HTMLImageElement[] = [];
 
-// A show requested before the style finished loading — queued for the map's
-// `load` event rather than silently dropped (the box must appear the moment
-// an import starts, even on a cold map). Cancelled by hideWaitingBox.
+// A show requested before the style loads is queued for the map's load event (not silently dropped) — cancelled by hideWaitingBox.
 let pendingShowCorners: readonly [Coord, Coord, Coord, Coord] | null = null;
 
 function styleReady(map: MapboxMap): boolean {
@@ -87,10 +55,7 @@ function centreOf(
 	return [lng / 4, lat / 4];
 }
 
-/** A geographic SQUARE centred on the quad, sized to ~3/4 of the slab's
- *  shorter side — where the animation canvas is draped. Metres-based so it
- *  renders square on screen regardless of latitude (raw degrees would
- *  squash it: 1° of longitude shrinks with cos(lat)). */
+/** Geographic square (~3/4 of the slab's shorter side) for the animation canvas — metres-based so it stays square on screen; raw degrees would squash it since 1° longitude shrinks with cos(lat). */
 function innerSquareQuad(
 	corners: readonly [Coord, Coord, Coord, Coord],
 ): [[number, number], [number, number], [number, number], [number, number]] {
@@ -112,8 +77,7 @@ function innerSquareQuad(
 	];
 }
 
-/** Insert the box below labels (same rule as the real overlay) so place names
- *  stay readable on top of it. */
+/** Insert the box below labels (same rule as the real overlay) so place names stay readable on top of it. */
 function pickBeforeId(map: MapboxMap): string | undefined {
 	for (const id of ["draw-edges-halo", "completed-fill"]) {
 		if (map.getLayer(id)) return id;
@@ -122,11 +86,7 @@ function pickBeforeId(map: MapboxMap): string | undefined {
 	return layers.find((l) => l.type === "symbol")?.id;
 }
 
-/**
- * Show the waiting placeholder on `corners` ([TL,TR,BR,BL], the same order the
- * real overlay uses). Idempotent: calling again re-points an existing box.
- * Does NOT move the camera — the importer frames the spot.
- */
+/** Show the waiting placeholder on corners ([TL,TR,BR,BL], same order as the real overlay). Idempotent — calling again re-points an existing box. Does NOT move the camera; the importer frames the spot. */
 export function showWaitingBox(
 	map: MapboxMap,
 	corners: readonly [Coord, Coord, Coord, Coord],
@@ -170,11 +130,7 @@ export function showWaitingBox(
 				id: BOX_FILL_LAYER_ID,
 				type: "fill",
 				source: BOX_SOURCE_ID,
-				// Dark slate grey — "here's where it's supposed to be, here's a
-				// slate" (the user's framing): an obvious placeholder slab,
-				// not a black hole punched in the map. Dark + near-opaque so it
-				// never reads faint over a bright basemap; the sliver of
-				// transparency keeps it reading as an overlay, not a hole.
+				// Dark slate + near-opaque (0.92) — reads as a placeholder slab, not a hole in the map.
 				paint: { "fill-color": "#31383f", "fill-opacity": 0.92 },
 			},
 			beforeId,
@@ -190,13 +146,7 @@ export function showWaitingBox(
 		);
 	}
 
-	// The animation MOUNTED ON the slab: a canvas draped over a geographic
-	// square in the slab's centre (~3/4 of its shorter side). Because it is a
-	// map source — not a DOM overlay — it moves and scales as one object with
-	// the box through every pan and zoom: welded, not floating. We tick the
-	// 11 source frames onto the canvas ourselves (drawImage of an animated
-	// image only ever yields frame 1) and `animate: true` keeps Mapbox
-	// re-uploading the canvas texture.
+	// Animation is mounted ON the slab as a CanvasSource (not a DOM overlay), so it pans/scales welded to the box; animate: true keeps Mapbox re-uploading the canvas texture.
 	const animQuad = innerSquareQuad(corners);
 	const existingAnim = map.getSource(ANIM_SOURCE_ID);
 	if (existingAnim && "setCoordinates" in existingAnim) {
@@ -248,24 +198,9 @@ export function showWaitingBox(
 	);
 }
 
-/**
- * Tear down the waiting box only once the real overlay is actually ON SCREEN.
- *
- * `addMapOverlay` adds the ImageSource synchronously, but Mapbox loads +
- * decodes the WebP asynchronously — hiding the box when addMapOverlay
- * *resolves* leaves a blank beat before the image paints (the "it disappeared
- * for a second" bug). So we hide on the first RENDERED FRAME after the
- * overlay source reports loaded: image decoded + drawn ⇒ pixels visible.
- *
- * NEVER gate this on `idle`: the waiting animation itself is an animated
- * CanvasSource that keeps the map perpetually re-rendering, so idle can't
- * arrive while the box is up — an idle gate only fires via the guard timeout
- * and the animation overstays on top of the finished map by ~10s (the
- * "animation runs way longer than it should" bug).
- *
- * The timeout is a never-strand guard only: if the overlay somehow never
- * loads, we still hide rather than leave the box up forever on a working map.
- */
+/** Tear down the waiting box only once the real overlay is actually ON SCREEN — hiding on addMapOverlay's resolve (not the first rendered frame after load) leaves a blank beat before the image paints. */
+// NEVER gate this on `idle` — the animation's CanvasSource keeps the map perpetually re-rendering, so idle only fires via the guard timeout and the box overstays ~10s.
+// The timeout is a never-strand guard only — hides anyway if the overlay never loads.
 export function hideWaitingBoxOnceRendered(
 	map: MapboxMap,
 	overlaySourceId = "map-overlay-image",
@@ -301,8 +236,7 @@ export function hideWaitingBoxOnceRendered(
 	}
 }
 
-/** Tear down the waiting box + its animation marker. Safe to call when nothing
- *  is shown, or after the map/style was torn down during navigation. */
+/** Tear down the waiting box + its animation marker. Safe to call when nothing is shown, or after the map/style was torn down during navigation. */
 export function hideWaitingBox(map: MapboxMap): void {
 	pendingShowCorners = null;
 	if (animTimer) {
