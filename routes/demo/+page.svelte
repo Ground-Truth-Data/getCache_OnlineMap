@@ -9,10 +9,10 @@
 import MapPage from "../../lib/mapPage.svelte";
 // DEV CHROME GOES TO THE SAME SURFACE ON EVERY TIER. The child's read-out is
 // handed to the shared EphemeralCard (tray) via `debugHost`; the card lives in
-// `$parent/retreeved/…` and renders only in `vite dev`, so nothing here
+// `$rig/…` and renders only in `vite dev`, so nothing here
 // reaches a build. No docks: the online map has no rails to dock.
-import EphemeralCard from "$parent/retreeved/sharedComponents/effemeralCard/EphemeralCard.svelte";
-import EphemeralDock from "$parent/retreeved/sharedComponents/effemeralCard/EphemeralDock.svelte";
+import EphemeralCard from "$rig/dev/EphemeralCard.svelte";
+import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 
 let debugHost = $state<HTMLElement>();
 </script>

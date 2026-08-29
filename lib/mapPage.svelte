@@ -34,9 +34,9 @@ import MapDrawControls from "./mapDrawControls.svelte";
 import PanelLand from "./mapPanelLand.svelte";
 import PanelOrg from "./mapPanelOrg.svelte";
 // The dev-tray hand-off. Same action the offline map uses, from the same
-// shared seam as the EphemeralCard it portals into (`$parent/retreeved/…` —
+// shared seam as the EphemeralCard it portals into (`$rig/…` —
 // the one folder every tier reads). Names no tier.
-import { portal } from "$parent/retreeved/sharedComponents/effemeralCard/portal";
+import { portal } from "$rig/dev/portal";
 
 // Block browser page zoom from trackpad pinch gestures.
 // Without this, pinching anywhere on the page (including over overlays) zooms
@@ -118,7 +118,7 @@ export let initialFeatures: import("geojson").Feature[] | undefined =
  * This page's only dev chrome is the read-out below (variant, camera, the
  * selected feature). Its DATA is this component's, so it stays owned here;
  * its PLACE is the host's. A page hands in an element — the content box of an
- * EphemeralCard from `$parent/retreeved/sharedComponents/effemeralCard` — and
+ * EphemeralCard from `$rig/dev` — and
  * the node is moved into it, state and scoped styles intact. Absent, it sits
  * over the map, which is what a standalone checkout gets. Either way it is
  * `import.meta.env.DEV` only and never reaches a build.
