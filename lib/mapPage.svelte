@@ -420,20 +420,14 @@ onMount(() => {
 		to { opacity: 0; }
 	}
 
-	/* ── THE COMPONENT STANDS UP ALONE ──────────────────────────────────
-	   These three rules used to live only in getCache_OnlineMap/lib/map.css,
-	   which is pulled in by app.css — and NOTHING loads app.css. The root
-	   +layout.svelte that imported it was deleted (it was the isMobileApp
-	   opt-out layout), so /who/map has rendered a ZERO-HEIGHT map ever
-	   since: the container collapsed, the canvas kept its own 300px, and
-	   the page looked blank while every control mounted fine.
-
-	   A child must not need a global stylesheet the host might not have.
-	   So the height lives here now, scoped to this component. The var()
-	   fallbacks keep the old override path working: a host that DOES load
-	   map.css (ReTreever does) still sets --map-height-offset and
-	   --subnav-height and gets the same result as before. */
+	/* THE MAP IS ITS SLOT. It fills the nearest positioned ancestor edge to
+	   edge — .mobile-content inside the phone, the viewport when the child runs
+	   alone — and never measures the browser window. Any viewport unit or
+	   min-height here makes the map taller than the phone on a big monitor and
+	   the shell's overflow-y:auto lets it scroll off the screen. */
 	.viewport-layout {
+		position: absolute;
+		inset: 0;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -442,16 +436,14 @@ onMount(() => {
 	.demo-map-area {
 		display: flex;
 		position: relative;
+		flex: 1;
+		min-height: 0;
 		width: 100%;
 		box-sizing: border-box;
 	}
 	.mapbox-map {
-		position: relative;
-		width: 100%;
-		height: calc(
-			100dvh - var(--map-height-offset, 0rem) - var(--subnav-height, 0rem)
-		);
-		min-height: 20rem;
+		position: absolute;
+		inset: 0;
 		overscroll-behavior: none;
 	}
 </style>
