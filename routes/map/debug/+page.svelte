@@ -6,9 +6,18 @@
  * too and the two tiers stay spellable by the same table. There is nothing to
  * switch on yet: `mapPage.svelte` takes no rails prop, so this renders the
  * same view rather than pretending to a debug mode it does not have. When the
- * child grows one, it goes here and the URL already exists.
+ * child grows one, it goes here and the URL already exists. (It does take
+ * `debugHost`, the dev-tray hand-off — wired below, same as /map.)
  */
 import MapPage from "../../../lib/mapPage.svelte";
+// DEV CHROME GOES TO THE SAME SURFACE ON EVERY TIER. The child's read-out is
+// handed to the shared EphemeralCard (tray) via `debugHost`; the card lives in
+// `$parent/retreeved/…` and renders only in `vite dev`, so nothing here
+// reaches a build. No docks: the online map has no rails to dock.
+import EphemeralCard from "$parent/retreeved/sharedComponents/effemeralCard/EphemeralCard.svelte";
+
+let debugHost = $state<HTMLElement>();
 </script>
 
-<MapPage variant="org" />
+<MapPage variant="org" {debugHost} />
+<EphemeralCard title="online map" bind:host={debugHost} />

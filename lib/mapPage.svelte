@@ -33,6 +33,10 @@ import { addOrgMarkersLayer } from "./mapLayerOrg";
 import MapDrawControls from "./mapDrawControls.svelte";
 import PanelLand from "./mapPanelLand.svelte";
 import PanelOrg from "./mapPanelOrg.svelte";
+// The dev-tray hand-off. Same action the offline map uses, from the same
+// shared seam as the EphemeralCard it portals into (`$parent/retreeved/…` —
+// the one folder every tier reads). Names no tier.
+import { portal } from "$parent/retreeved/sharedComponents/effemeralCard/portal";
 
 // Block browser page zoom from trackpad pinch gestures.
 // Without this, pinching anywhere on the page (including over overlays) zooms
@@ -108,6 +112,24 @@ export let onFeatureComplete:
     | undefined = undefined;
 export let initialFeatures: import("geojson").Feature[] | undefined =
     undefined;
+/**
+ * WHERE THE DEV CHROME GOES — the same hand-off the offline map has.
+ *
+ * This page's only dev chrome is the read-out below (variant, camera, the
+ * selected feature). Its DATA is this component's, so it stays owned here;
+ * its PLACE is the host's. A page hands in an element — the content box of an
+ * EphemeralCard from `$parent/retreeved/sharedComponents/effemeralCard` — and
+ * the node is moved into it, state and scoped styles intact. Absent, it sits
+ * over the map, which is what a standalone checkout gets. Either way it is
+ * `import.meta.env.DEV` only and never reaches a build.
+ *
+ * No rail hosts: unlike the offline map this page has no instrument rails to
+ * dock, so it takes only the tray.
+ */
+export let debugHost: HTMLElement | undefined = undefined;
+const dev = import.meta.env.DEV;
+/** The read-out's text. Written from `moveend`, so one line per gesture. */
+let devCamera = "";
 
 let mapContainer: HTMLDivElement;
 let selectedFeature: any = null;
@@ -185,6 +207,15 @@ onMount(() => {
         onFeatureSelect: handleFeatureSelect,
         onMapReady: async (map) => {
             mapInstance = map;
+
+            if (dev) {
+                const writeCamera = () => {
+                    const c = map.getCenter();
+                    devCamera = `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)} · z${map.getZoom().toFixed(2)}`;
+                };
+                writeCamera();
+                map.on("moveend", writeCamera);
+            }
 
             if (isOrg) {
                 await addOrgMarkersLayer(map, {
@@ -286,6 +317,15 @@ onMount(() => {
 			</div>
 		{/if}
 		<MapNavButtons />
+		<!-- THE DEV READ-OUT. Dev-only by `{#if dev}`, so it is compiled out of
+		     every build; portalled into the host's tray when one is given. -->
+		{#if dev}
+			<output class="dev-readout" use:portal={debugHost} aria-live="polite">
+				<span class="k">online map</span> · {variant}
+				{#if devCamera}<br />{devCamera}{/if}
+				{#if selectedFeature}<br />selected: {selectedFeature.organizationKey ?? selectedFeature.landKey ?? selectedFeature.projectName ?? "?"}{/if}
+			</output>
+		{/if}
 		<MapDrawControls map={mapInstance} {onFeatureComplete} {initialFeatures} />
 		<InfoPanel
 			bind:selectedFeature
@@ -296,6 +336,26 @@ onMount(() => {
 </div>
 
 <style>
+	/* The dev read-out, when no host takes it: a pill over the map, under the
+	   parent's nav. In a tray the tray neutralises the placement rules. */
+	.dev-readout {
+		position: absolute;
+		top: 40px;
+		right: 12px;
+		z-index: 50;
+		padding: 4px 10px;
+		border-radius: 10px;
+		background: rgb(0 0 0 / 0.78);
+		color: #ddd;
+		font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	.dev-readout .k {
+		color: #e8b923;
+		font-weight: 700;
+	}
+
 	/* Push map controls down to avoid navbar overlap */
 	:global(.mapboxgl-ctrl-top-left) {
 		top: 60px;
