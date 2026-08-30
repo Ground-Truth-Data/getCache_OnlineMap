@@ -3,9 +3,9 @@ import type { Reroute } from "@sveltejs/kit";
 /**
  * A CLOSED LOOP — every url this install can be given lands on a real page.
  *
- * THE DEFAULT is /map/debug. "/" resolves here, the nav logo links here, and
- * the dev server prints it. THE SECOND view is /map. Between them, plus
- * /demo, this child's standalone preview, that is the WHOLE surface of a solo install.
+ * THE DEFAULT is /map. "/" resolves here, the nav logo links here, and the
+ * dev server prints it. Add /demo, this child's standalone preview, and that
+ * is the WHOLE surface of a solo install.
  *
  * WHY ANYTHING ELSE COMES BACK RATHER THAN 404ING.
  * Someone who installed one child from npm has no other tier and no second
@@ -25,11 +25,11 @@ import type { Reroute } from "@sveltejs/kit";
  * only when a parent points `kit.files.hooks.universal` at this file; a child
  * cloned alone with its own config simply never runs it.
  *
- * KEEP IN STEP with this child's `defaultPath` in retreeved/childRegistry.ts —
+ * KEEP IN STEP with this child's `defaultPath` in rapper/rig/childRegistry.ts —
  * that record is what the nav and the printed url read.
  */
-const SERVED = ["/map", "/demo"];
-const DEFAULT = "/map/debug";
+const SERVED = ["/demo"];
+const DEFAULT = "/map";
 
 export const reroute: Reroute = ({ url }) => {
 	// The DEFAULT counts as served too — it is the one url guaranteed to exist.

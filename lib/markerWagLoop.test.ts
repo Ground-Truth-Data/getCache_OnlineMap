@@ -95,7 +95,8 @@ describe("the shipped dog marker", () => {
     const markup = readFileSync(
         fileURLToPath(
             new URL(
-                "../../../../static/pub-Rtvr/map-marker-tailWag-ReTreever.svg",
+                // the shared tree's canonical copy ($rt) — flat sibling, like all cross-repo refs
+                "../../rapper/rt/assets/map-marker-tailWag-ReTreever.svg",
                 import.meta.url,
             ),
         ),
