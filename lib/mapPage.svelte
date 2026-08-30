@@ -127,6 +127,10 @@ export let initialFeatures: import("geojson").Feature[] | undefined =
  * dock, so it takes only the tray.
  */
 export let debugHost: HTMLElement | undefined = undefined;
+// Fires once the style has loaded (initializeMap's own onMapReady) — the hook
+// consumers use to add their own sources/layers, e.g. ReTreever's store pins.
+export let onMapReady: ((map: import("mapbox-gl").Map) => void) | undefined =
+    undefined;
 const dev = import.meta.env.DEV;
 /** The read-out's text. Written from `moveend`, so one line per gesture. */
 let devCamera = "";
@@ -236,6 +240,8 @@ onMount(() => {
                 flyToAndSelect(map, pendingFeature);
                 pendingFeature = null;
             }
+
+            onMapReady?.(map);
         },
     });
 
