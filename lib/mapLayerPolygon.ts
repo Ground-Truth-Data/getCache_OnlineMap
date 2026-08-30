@@ -87,7 +87,9 @@ export async function addMarkersLayer(
     map: mapboxgl.Map,
     options: MapOptions = {},
 ): Promise<void> {
-    const polygonsUrl = options.polygonsUrl ?? "";
+    // No URL means the mounting parent has no polygon endpoint — there is nothing to draw, and asking anyway 404s on every map init.
+    const polygonsUrl = options.polygonsUrl;
+    if (!polygonsUrl) return;
     /** Append a query to the consumer-supplied URL, preserving any it already has. */
     const withQuery = (q: string) =>
         `${polygonsUrl}${polygonsUrl.includes("?") ? "&" : "?"}${q}`;

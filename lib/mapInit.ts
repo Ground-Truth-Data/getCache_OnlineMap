@@ -670,6 +670,8 @@ export function initializeMap(
     // to its container, and jump the camera to the last finite center.
     let lastGoodCenter: [number, number] = safeCenter;
     let lastGoodZoom = safeZoom;
+    // Warn once per episode, not per tick — a camera that never recovers would otherwise print every 400ms for as long as the tab lives.
+    let unhealthySince: number | null = null;
     map.on("moveend", () => {
         const c = map.getCenter();
         if (Number.isFinite(c.lng) && Number.isFinite(c.lat)) {
@@ -703,17 +705,25 @@ export function initializeMap(
             cont.clientHeight > 0 &&
             (canvasEl.clientWidth === 0 || canvasEl.clientHeight === 0);
         if (cameraBad) {
-            console.warn(
-                "[mapInit] camera transform degenerate — restoring last good view",
-            );
+            if (unhealthySince === null) {
+                console.warn(
+                    "[mapInit] camera transform degenerate — restoring last good view",
+                );
+            }
             // safeJumpTo cancels the in-flight NaN animation and pins the
             // camera back to finite values, so _render stops throwing and
             // rendering resumes.
             safeJumpTo(map, { center: lastGoodCenter, zoom: lastGoodZoom });
         }
         if (cameraBad || canvasDead) {
+            unhealthySince ??= Date.now();
             map.resize();
             map.triggerRepaint();
+        } else if (unhealthySince !== null) {
+            console.warn(
+                `[mapInit] map healthy again after ${Math.round((Date.now() - unhealthySince) / 1000)}s`,
+            );
+            unhealthySince = null;
         }
     }, 400);
 
