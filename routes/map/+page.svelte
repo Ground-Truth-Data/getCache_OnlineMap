@@ -1,19 +1,15 @@
 <script lang="ts">
 /**
- * /map — the online map, running on nothing.
+ * /map — the URL; the page is ../../lib/OnlineMapPage.svelte.
  *
- * SAME PATH AS THE MOUNTING PARENT SERVES. The tier pill translates a path to
- * its counterpart on the other tier, and when both tiers spell a view the same
- * way that translation is the identity — nothing to write down, nothing to get
- * wrong. This child previously served only /demo, a name the parent has no
- * route for, so the pill had no counterpart to offer and greyed out.
+ * A route file is just a mount — keep the logic in the component; two copies
+ * of the wiring drift the first time either is touched. Same path as the
+ * mounting parent serves, so the tier pill's translation is the identity.
  *
- * NOTE this is not ReTreever's real /map. That one is MobMapPage.svelte, which
- * reaches into mapStore and the mobile component tree — tier-1 proprietary
- * code a child must never carry. This is the fixture-backed view: honest about
- * being a demo, and it runs with no parent behind it.
+ * No ports here: a solo checkout has no host store, so the map renders with
+ * no pins rather than crashing — the ports contract's whole point.
  */
-import MapPage from "../../lib/mapPage.svelte";
+import OnlineMapPage from "../../lib/OnlineMapPage.svelte";
 // DEV CHROME GOES TO THE SAME SURFACE ON EVERY TIER. The child's read-out is
 // handed to the shared EphemeralCard (tray) via `debugHost`; the card lives in
 // `$rig/…` and renders only in `vite dev`, so nothing here
@@ -24,5 +20,5 @@ import EphemeralDock from "$rig/dev/EphemeralDock.svelte";
 let debugHost = $state<HTMLElement>();
 </script>
 
-<MapPage variant="org" {debugHost} />
+<OnlineMapPage {debugHost} />
 <EphemeralDock side="left"><EphemeralCard title="online map" bind:host={debugHost} /></EphemeralDock>
