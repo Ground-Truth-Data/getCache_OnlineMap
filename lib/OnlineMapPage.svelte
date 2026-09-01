@@ -16,8 +16,10 @@ import { page } from "$app/stores";
 import "mapbox-gl/dist/mapbox-gl.css";
 // The child carries its own stylesheet — see the note in mapPage.svelte.
 import "./map.css";
+import { replaceState } from "$app/navigation";
 import { initializeMap } from "./mapInit";
 import { addClusteredPins } from "./mapMarker";
+import { parseMapHash } from "./mapUtilsHash";
 import type { OnlineMapHostPorts } from "./shared/hostPorts";
 import { portal } from "$rig/dev/portal";
 
@@ -33,7 +35,12 @@ let mapContainer: HTMLDivElement;
 let mapInstance = $state<MapboxMap | null>(null);
 
 onMount(() => {
+	// A camera in the URL (#zoom/lat/lng — e.g. handed over by the tier
+	// pill) wins over the fit-to-pins landing: the visitor asked for a spot.
+	if (parseMapHash(window.location.hash)) didFit = true;
 	const cleanup = initializeMap(mapContainer, {
+		enableHash: true,
+		writeHash: (url: string) => replaceState(url, {}),
 		onMapReady: (map) => {
 			mapInstance = map;
 			if (dev) {
