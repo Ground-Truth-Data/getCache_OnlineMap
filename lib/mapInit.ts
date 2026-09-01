@@ -38,11 +38,13 @@ const defaultSatStyle = MAP_CONFIG.styles.defaultSat;
 const MAP_PRESERVE_DRAWING_BUFFER = true;
 
 // ── Hospital markers from OpenStreetMap ──────────────────────────────
-// Mapbox vector tiles carry no hospital POIs at low zoom, so a static baked
-// GeoJSON is added as a custom layer that renders at ALL zoom levels.
+// Mapbox vector tiles carry no hospital POIs at low zoom, so the hospitals
+// near the anchor arrive from the app's endpoint (opts.hospitalsUrl — WORLD
+// coverage, already radius-filtered server-side) and render as a custom layer
+// at ALL zoom levels.
 //
 // Holds a BLOB URL (a short string), never the parsed FeatureCollection —
-// see nearbyHospitalsUrl() for why.
+// see fetchHospitals() for why.
 let _hospitalGeoJSON: string | null = null;
 
 // The APP's "show me my location" action (opts.onShowMyLocation) — never raw
@@ -231,93 +233,44 @@ function addHospitalLayers(map: mapboxgl.Map): void {
     });
 }
 
-function haversineKm(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-): number {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos((lat1 * Math.PI) / 180) *
-            Math.cos((lat2 * Math.PI) / 180) *
-            Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 /**
- * Unlike fires (wind, size, direction), one hard radius around the worker:
- * within driving distance a hospital matters, past that it's memory cost,
- * not a safety fact. 200 km chosen by the user.
+ * The endpoint to hit, or null ⇒ no hospital layer at all. Null on either
+ * missing input: no anchor means there is no "nearby" to ask about, and no
+ * urlFor means the app never configured a hospitals endpoint (rapper is
+ * UI-only — hosts and route names are the APP's, never baked in here).
  */
-const HOSPITAL_RADIUS_KM = 200;
-
-/**
- * Keep only hospitals within HOSPITAL_RADIUS_KM of `anchor`, returned as a
- * blob URL, never an object.
- *
- * The previous shape handed Mapbox a live module-level graph of all 3,005
- * Canadian hospitals — retained for the process lifetime AND cloned into the
- * GL worker on every mount. Mapbox's docs say to give a geojson source a URL
- * so its worker fetches and parses it; we must filter first, hence a Blob
- * URL. Our heap keeps only the string — the parsed array is unreachable the
- * moment this returns.
- */
-function nearbyHospitalsUrl(
-    raw: unknown,
-    anchor: [number, number],
+function hospitalsRequestUrl(
+    anchor: [number, number] | null,
+    urlFor: ((anchor: [number, number]) => string | null) | null | undefined,
 ): string | null {
-    const fc = raw as {
-        features?: Array<{ geometry?: { coordinates?: [number, number] } }>;
-    } | null;
-    if (!fc?.features?.length) return null;
-
-    const [aLng, aLat] = anchor;
-    const near: unknown[] = [];
-    for (const f of fc.features) {
-        const c = f?.geometry?.coordinates;
-        if (!c || c.length < 2) continue;
-        if (haversineKm(aLat, aLng, c[1], c[0]) <= HOSPITAL_RADIUS_KM) {
-            near.push(f);
-        }
-    }
-    if (!near.length) return null;
-
-    const blob = new Blob(
-        [JSON.stringify({ type: "FeatureCollection", features: near })],
-        { type: "application/json" },
-    );
-    return URL.createObjectURL(blob);
+    if (!anchor) return null;
+    return urlFor?.(anchor) ?? null;
 }
 
 async function fetchHospitals(
     map: mapboxgl.Map,
-    anchor?: [number, number] | null,
+    anchor: [number, number] | null,
+    urlFor: ((anchor: [number, number]) => string | null) | null | undefined,
 ): Promise<void> {
-    // No anchor ⇒ no hospitals: without a position there is no "nearby",
-    // and loading the whole country is exactly the cost being removed.
-    if (!anchor) return;
+    const url = hospitalsRequestUrl(anchor, urlFor);
+    if (!url) return;
 
-    // Static GeoJSON baked from OpenStreetMap — no live API calls.
-    // Refresh file from Overpass yearly if needed.
     try {
-        const res = await fetch("/mobileAssets/hospitals-canada.json");
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // Parsed, filtered, and dropped inside this scope — do NOT hoist the
-        // feature array to a module variable; that retention is the bug this
-        // shape removed.
-        _hospitalGeoJSON = nearbyHospitalsUrl(await res.json(), anchor);
-        if (!_hospitalGeoJSON) return;
+        // Already radius-filtered server-side (worldwide source). Keep only a
+        // blob URL — Mapbox fetches and parses it inside its own GL worker, so
+        // the main thread never retains the feature graph (the 3,005-feature
+        // module-level object this shape replaced was measured retention).
+        const blob = new Blob([await res.text()], { type: "application/json" });
+        _hospitalGeoJSON = URL.createObjectURL(blob);
         addHospitalLayer(map);
     } catch (err) {
         // Unmount race: SvelteKit cancels in-flight fetches on leaving the
         // page, then mapbox's `idle` fires after teardown and re-calls us.
         // Not a real error — hospitals reload on next mount.
         if ((err as Error)?.message === "Failed to fetch") return;
-        console.error("[Hospitals] Failed to load hospitals-canada.json:", err);
+        console.error("[Hospitals] Failed to load hospitals:", err);
     }
 }
 
@@ -836,7 +789,11 @@ export function initializeMap(
             // Anchor comes from the APP (rapper is UI-only, no mobile stores)
             // and is read HERE, not at construction — it hydrates async, so
             // an early capture is the app's fallback, not the user's position.
-            fetchHospitals(map, opts.hospitalAnchor?.() ?? null);
+            fetchHospitals(
+                map,
+                opts.hospitalAnchor?.() ?? null,
+                opts.hospitalsUrl,
+            );
         }
         if (opts.loadMarkers) await addMarkersLayer(map, opts);
         // Draw tools live in <MapDrawControls> on the page components.
@@ -860,7 +817,8 @@ export type { ClusteredPinsConfig } from "./mapMarker";
 export type { MapOptions, PolygonConfig } from "./mapTypes";
 
 /**
- * For hospitalCost.test.ts ONLY — the filter's memory SHAPE is the guarded
- * thing; the bug it fixes was invisible to correctness tests.
+ * For hospitalCost.test.ts ONLY — the load's SHAPE is the guarded thing (no
+ * anchor/endpoint ⇒ no request at all); the bug class it guards was invisible
+ * to correctness tests.
  */
-export const __testing = { nearbyHospitalsUrl, HOSPITAL_RADIUS_KM };
+export const __testing = { hospitalsRequestUrl };

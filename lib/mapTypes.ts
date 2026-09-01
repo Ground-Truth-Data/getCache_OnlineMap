@@ -69,19 +69,30 @@ export interface MapOptions {
     /** Show hospital POI markers (prominently sized) when hideLabels is true */
     showHospitalMarkers?: boolean;
     /**
-     * `[lng, lat]` to measure "nearby" FROM — only hospitals within 200 km of
-     * it are loaded. REQUIRED for hospitals to appear: without an anchor there
-     * is no such thing as a nearby hospital, so nothing loads at all.
+     * `[lng, lat]` to measure "nearby" FROM — the app's endpoint (see
+     * hospitalsUrl) returns only hospitals around it. REQUIRED for hospitals
+     * to appear: without an anchor there is no such thing as a nearby
+     * hospital, so nothing loads at all.
      *
      * A FUNCTION, called when the fetch actually runs (map `load`). It must not
      * be a plain value: the app resolves this from a store that hydrates
      * asynchronously, so reading it at map-construction time yields the app's
-     * fallback position and filters around the wrong place.
+     * fallback position and asks about the wrong place.
      *
      * The app supplies it (live position → last known → last feature), since
      * rapper is UI-only and must not read mobile stores itself.
      */
     hospitalAnchor?: (() => [number, number] | null) | null;
+    /**
+     * READY-MADE URL for the hospitals near one anchor — worldwide coverage,
+     * radius-filtered by the server, GeoJSON points with `name` and (when OSM
+     * tags it) `emergency`. Null ⇒ no hospital layer.
+     *
+     * A function of the anchor, not a base URL: the child must know NO hosts
+     * and NO route names (childBoundary RULE 7) — the app owns both and hands
+     * over the finished address.
+     */
+    hospitalsUrl?: ((anchor: [number, number]) => string | null) | null;
     /**
      * "Take me to my location and show me the number." Called by the hospital
      * popup's GPS button; the APP owns the whole behaviour (permission gate,
