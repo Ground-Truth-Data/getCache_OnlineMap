@@ -7,7 +7,7 @@
 // written down ONCE here instead of pasted inline across components.
 //
 // Lives in rapper so BOTH the open map components AND the proprietary
-// ReTreever components share ONE catalog (ReTreever imports it by package name, rapper
+// ReTreever components share ONE catalog (ReTreever imports via $parent/siblings, rapper
 // via $lib — the legal ReTreever→rapper / rapper→rapper directions).
 //
 // These are monochrome lucide-style line icons. Multi-colour brand marks
