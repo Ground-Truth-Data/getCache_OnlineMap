@@ -143,6 +143,7 @@ function addHospitalLayers(map: mapboxgl.Map): void {
         hospLng: number,
         hospLat: number,
         name: string,
+        phone?: string | null,
     ) => {
         const popupId = `hosp-popup-${Date.now()}`;
         // ⛔ RENDERER-CORRECT Popup. This shell serves BOTH maps (/map is
@@ -162,6 +163,14 @@ function addHospitalLayers(map: mapboxgl.Map): void {
             .setHTML(
                 `<div id="${popupId}" style="font-family:system-ui;font-size:13px;line-height:1.5;color:#222">` +
                     `<strong style="font-size:13px">${name}</strong><br>` +
+                    // National-registry rows carry the hospital's own line —
+                    // in the field, the switchboard is the second-best number
+                    // after 911. Digits+punctuation only: this lands in an
+                    // href, and the data is upstream text.
+                    (phone && /^[\d\s+().-]{5,25}$/.test(phone)
+                        ? `<a href="tel:${phone.replace(/[^\d+]/g, "")}" style="color:#2563eb;` +
+                          `text-decoration:none;font-size:12px">${phone}</a><br>`
+                        : "") +
                     `<span style="display:flex;gap:6px;margin-top:6px">` +
                     `<a href="tel:911" style="padding:4px 10px;background:#dc3545;color:#fff;` +
                     `border-radius:4px;text-decoration:none;font-weight:600;font-size:12px">911</a>` +
@@ -190,7 +199,12 @@ function addHospitalLayers(map: mapboxgl.Map): void {
             (feat.geometry as GeoJSON.Point).coordinates,
         );
         if (!coord) return;
-        openHospitalPopup(coord[0], coord[1], feat.properties?.name ?? "Hospital");
+        openHospitalPopup(
+            coord[0],
+            coord[1],
+            feat.properties?.name ?? "Hospital",
+            feat.properties?.phone,
+        );
     });
 
     // Cluster click → open popup for one hospital in the cluster.
@@ -211,11 +225,13 @@ function addHospitalLayers(map: mapboxgl.Map): void {
             return;
         }
         src.getClusterLeaves(clusterId, 1, 0, (err, leaves) => {
-            const name =
-                !err && leaves?.[0]?.properties?.name
-                    ? leaves[0].properties.name
-                    : "Hospital";
-            openHospitalPopup(coord[0], coord[1], name);
+            const props = !err ? leaves?.[0]?.properties : null;
+            openHospitalPopup(
+                coord[0],
+                coord[1],
+                props?.name ?? "Hospital",
+                props?.phone,
+            );
         });
     });
 
