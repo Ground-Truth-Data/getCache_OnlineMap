@@ -31,10 +31,17 @@ import type { Reroute } from "@sveltejs/kit";
 const SERVED = ["/demo"];
 const DEFAULT = "/map";
 
+// Both tiers mount this child under /app; a solo install serves it flat. The
+// same link (`/app/map`) must land in both, so the prefix is stripped here.
+const APP_PREFIX = "/app";
+
 export const reroute: Reroute = ({ url }) => {
+	const p = url.pathname.startsWith(APP_PREFIX + "/")
+		? url.pathname.slice(APP_PREFIX.length)
+		: url.pathname;
 	// The DEFAULT counts as served too — it is the one url guaranteed to exist.
 	// Listing it here rather than in SERVED keeps SERVED meaning "the OTHER
 	// views", so the two constants stay readable side by side.
-	const known = [DEFAULT, ...SERVED].some((p) => url.pathname === p);
-	if (!known) return DEFAULT;
+	const known = [DEFAULT, ...SERVED].some((k) => p === k);
+	return known ? p : DEFAULT;
 };
