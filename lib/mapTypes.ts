@@ -12,6 +12,8 @@ export interface MapOptions {
     // ─── /WHERE PAGE FEATURES (off by default, on for fullMapOptions) ───
     /** Show navigation controls (zoom, compass) */
     showNavigation?: boolean;
+    /** Scale bar on its own — defaults to `showNavigation`. /where draws its own zoom buttons but still wants the bar. */
+    showScale?: boolean;
     /**
      * Show a small live zoom readout (e.g. "z3.4") in the bottom-right
      * corner. Debug aid — the zoom drives spin cutoff, marker sizing and

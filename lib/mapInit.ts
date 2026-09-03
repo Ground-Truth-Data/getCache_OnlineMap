@@ -733,7 +733,7 @@ export function initializeMap(
         map.addControl(nc, "top-left");
     }
 
-    if (opts.showNavigation && !opts.mobileControls) {
+    if ((opts.showScale ?? opts.showNavigation) && !opts.mobileControls) {
         const scaleControl = new mapboxgl.ScaleControl({
             maxWidth: 160,
             unit: "metric",
